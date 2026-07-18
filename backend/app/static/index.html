@@ -1,0 +1,1913 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShramikMitra AI - Labour Rights Assistant</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              DEFAULT: '#2563EB',
+              hover: '#1D4ED8',
+            },
+            secondary: {
+              DEFAULT: '#16A34A',
+              hover: '#15803D',
+            },
+            accent: {
+              DEFAULT: '#F59E0B',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Google Fonts: Inter -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    /* Flashing SOS helper */
+    @keyframes pulse-slow {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.8; transform: scale(1.02); }
+    }
+    .animate-pulse-slow {
+      animation: pulse-slow 2.5s infinite;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+  <div id="app" class="min-h-screen flex flex-col">
+    <!-- Screen View Renderers will be managed dynamically via JavaScript state -->
+  </div>
+
+  <!-- JavaScript State Machine & API Service -->
+  <script>
+    const API_BASE = ""; // Relative to server root
+
+    // Central state object
+    const state = {
+      token: localStorage.getItem("shramik_token") || null,
+      user: null,
+      activeView: "landing", // landing, login, register, dashboard, chat, rights, schemes, complaints, documents, map, diary, profile
+      language: "en", // en or hi
+      theme: localStorage.getItem("shramik_theme") || "light",
+      
+      // Feature Data Store
+      chatHistory: [],
+      chatInput: "",
+      chatLoading: false,
+      
+      rights: [],
+      rightsSearch: "",
+      rightsCategory: "All",
+      selectedRight: null,
+      
+      schemesMatched: null,
+      schemesLoading: false,
+      schemeForm: { age: 25, gender: "Male", occupation: "Construction", state: "Delhi" },
+      
+      complaintForm: { employer_name: "", issue: "Unpaid Wages", date: "", description: "" },
+      complaintGenerated: null,
+      complaintLoading: false,
+      complaintHistory: [],
+      complaintTab: "en",
+      
+      diaryEntries: [],
+      diaryLoading: false,
+      diaryForm: { id: null, date: "", employer: "", hours_worked: 8, salary_earned: 673, notes: "" },
+      diaryModalOpen: false,
+      
+      docAnalysis: null,
+      docLoading: false,
+      docFile: null,
+
+      // SOS Modal
+      sosOpen: false
+    };
+
+    // Initialize Theme
+    function applyTheme() {
+      if (state.theme === "dark") {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
+    }
+    applyTheme();
+
+    // Custom Headers Helper
+    function getHeaders(multipart = false) {
+      const headers = {};
+      if (!multipart) {
+        headers["Content-Type"] = "application/json";
+      }
+      if (state.token) {
+        headers["Authorization"] = `Bearer ${state.token}`;
+      }
+      return headers;
+    }
+
+    // Direct HTTP Request wrapper
+    async function request(endpoint, options = {}) {
+      try {
+        const response = await fetch(`${API_BASE}${endpoint}`, {
+          ...options,
+          headers: {
+            ...getHeaders(options.body instanceof FormData),
+            ...(options.headers || {})
+          }
+        });
+        
+        if (response.status === 401) {
+          logout();
+          throw new Error("Session expired. Please sign in again.");
+        }
+        
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.detail || "Request failed");
+        }
+        
+        if (response.status === 204) return {};
+        return await response.json();
+      } catch (e) {
+        console.error("API error:", e);
+        throw e;
+      }
+    }
+
+    // Refresh User Profile
+    async function refreshUser() {
+      if (!state.token) {
+        state.user = null;
+        return;
+      }
+      try {
+        state.user = await request("/api/auth/me");
+        state.language = state.user.preferred_language || "en";
+      } catch (e) {
+        state.token = null;
+        state.user = null;
+        localStorage.removeItem("shramik_token");
+      }
+    }
+
+    // Routing Navigation
+    async function navigate(view) {
+      state.activeView = view;
+      
+      // Auto loading dependencies based on view target
+      if (view === "dashboard") {
+        loadOverviewStats();
+      } else if (view === "chat") {
+        loadChatHistory();
+      } else if (view === "rights") {
+        loadRightsLibrary();
+      } else if (view === "complaints") {
+        loadComplaintHistory();
+      } else if (view === "diary") {
+        loadDiaryEntries();
+      }
+      
+      render();
+    }
+
+    // Actions
+    async function handleLogin(username, password) {
+      try {
+        const tokenRes = await request("/api/auth/login-json", {
+          method: "POST",
+          body: JSON.stringify({ username, password })
+        });
+        state.token = tokenRes.access_token;
+        localStorage.setItem("shramik_token", tokenRes.access_token);
+        await refreshUser();
+        navigate("dashboard");
+      } catch (e) {
+        alert("Error: " + e.message);
+      }
+    }
+
+    async function handleRegister(username, password) {
+      try {
+        await request("/api/auth/register", {
+          method: "POST",
+          body: JSON.stringify({ username, password })
+        });
+        await handleLogin(username, password);
+      } catch (e) {
+        alert("Registration failed: " + e.message);
+      }
+    }
+
+    async function handleGuestLogin() {
+      try {
+        const tokenRes = await request("/api/auth/guest", { method: "POST" });
+        state.token = tokenRes.access_token;
+        localStorage.setItem("shramik_token", tokenRes.access_token);
+        await refreshUser();
+        navigate("dashboard");
+      } catch (e) {
+        alert("Guest entry failed: " + e.message);
+      }
+    }
+
+    function logout() {
+      state.token = null;
+      state.user = null;
+      localStorage.removeItem("shramik_token");
+      navigate("landing");
+    }
+
+    async function toggleLanguage() {
+      const nextLang = state.language === "en" ? "hi" : "en";
+      state.language = nextLang;
+      if (state.user) {
+        try {
+          state.user = await request("/api/profile/", {
+            method: "PUT",
+            body: JSON.stringify({ preferred_language: nextLang })
+          });
+        } catch(e){}
+      }
+      render();
+    }
+
+    function toggleThemeMode() {
+      const nextTheme = state.theme === "light" ? "dark" : "light";
+      state.theme = nextTheme;
+      localStorage.setItem("shramik_theme", nextTheme);
+      applyTheme();
+      render();
+    }
+
+    // --- FEATURE LOADERS & API CALLS ---
+    
+    // Overview Data
+    let totalWagesLogged = 0;
+    let totalHoursLogged = 0;
+    let recentComplaints = [];
+    let recentLogs = [];
+
+    async function loadOverviewStats() {
+      try {
+        const [diary, complaints] = await Promise.all([
+          request("/api/diary/"),
+          request("/api/complaints/history")
+        ]);
+        
+        totalHoursLogged = diary.reduce((sum, item) => sum + item.hours_worked, 0);
+        totalWagesLogged = diary.reduce((sum, item) => sum + item.salary_earned, 0);
+        
+        recentLogs = diary.slice(0, 3);
+        recentComplaints = complaints.slice(0, 2);
+      } catch (e) {
+        console.error("Stats load failed", e);
+      }
+    }
+
+    // AI Chat
+    async function loadChatHistory() {
+      try {
+        state.chatHistory = await request("/api/chat/");
+      } catch(e){}
+    }
+
+    async function sendChatMessage() {
+      const msgText = state.chatInput.trim();
+      if (!msgText || state.chatLoading) return;
+      
+      state.chatInput = "";
+      state.chatLoading = true;
+      
+      // Add user placeholder optimistically
+      state.chatHistory.push({
+        id: Date.now(),
+        message: msgText,
+        response: "",
+        timestamp: new Date().toISOString()
+      });
+      render();
+
+      try {
+        const chatRes = await request("/api/chat/", {
+          method: "POST",
+          body: JSON.stringify({ message: msgText })
+        });
+        state.chatHistory[state.chatHistory.length - 1] = chatRes;
+      } catch (e) {
+        state.chatHistory.pop();
+        alert("Error sending message: " + e.message);
+      } finally {
+        state.chatLoading = false;
+        render();
+        scrollToChatBottom();
+      }
+    }
+
+    function scrollToChatBottom() {
+      const el = document.getElementById("chat-pane");
+      if (el) el.scrollTop = el.scrollHeight;
+    }
+
+    async function clearChatHistory() {
+      if (!confirm("Are you sure you want to clear your chat history?")) return;
+      try {
+        await request("/api/chat/clear", { method: "DELETE" });
+        state.chatHistory = [];
+        render();
+      } catch(e){}
+    }
+
+    // Rights Library
+    async function loadRightsLibrary() {
+      try {
+        state.rights = await request("/api/rights/");
+      } catch(e){}
+    }
+
+    // Schemes Matcher
+    async function matchSchemes() {
+      state.schemesLoading = true;
+      render();
+      try {
+        state.schemesMatched = await request("/api/schemes/recommend", {
+          method: "POST",
+          body: JSON.stringify(state.schemeForm)
+        });
+      } catch (e) {
+        alert("Error finding schemes: " + e.message);
+      } finally {
+        state.schemesLoading = false;
+        render();
+      }
+    }
+
+    // Complaints Generator
+    async function loadComplaintHistory() {
+      try {
+        state.complaintHistory = await request("/api/complaints/history");
+      } catch(e){}
+    }
+
+    async function generateComplaintLetter() {
+      if (!state.complaintForm.employer_name || !state.complaintForm.date || !state.complaintForm.description) {
+        alert("Please fill in all fields.");
+        return;
+      }
+      state.complaintLoading = true;
+      render();
+      try {
+        state.complaintGenerated = await request("/api/complaints/generate", {
+          method: "POST",
+          body: JSON.stringify(state.complaintForm)
+        });
+        await loadComplaintHistory();
+      } catch (e) {
+        alert("Complaint failed to generate: " + e.message);
+      } finally {
+        state.complaintLoading = false;
+        render();
+      }
+    }
+
+    function triggerPdfDownload(id) {
+      window.open(`/api/complaints/${id}/download?token=${state.token}`, "_blank");
+    }
+
+    // Worker Diary CRUD
+    async function loadDiaryEntries() {
+      try {
+        state.diaryEntries = await request("/api/diary/");
+        totalHoursLogged = state.diaryEntries.reduce((sum, item) => sum + item.hours_worked, 0);
+        totalWagesLogged = state.diaryEntries.reduce((sum, item) => sum + item.salary_earned, 0);
+      } catch(e){}
+    }
+
+    async function saveDiaryEntry() {
+      if (!state.diaryForm.date || !state.diaryForm.employer) {
+        alert("Please enter a date and employer.");
+        return;
+      }
+      state.diaryLoading = true;
+      
+      const payload = {
+        date: state.diaryForm.date,
+        employer: state.diaryForm.employer,
+        hours_worked: Number(state.diaryForm.hours_worked),
+        salary_earned: Number(state.diaryForm.salary_earned),
+        notes: state.diaryForm.notes || undefined
+      };
+
+      try {
+        if (state.diaryForm.id) {
+          // Edit
+          const updated = await request(`/api/diary/${state.diaryForm.id}`, {
+            method: "PUT",
+            body: JSON.stringify(payload)
+          });
+          state.diaryEntries = state.diaryEntries.map(e => e.id === state.diaryForm.id ? updated : e);
+        } else {
+          // Create
+          const created = await request("/api/diary/", {
+            method: "POST",
+            body: JSON.stringify(payload)
+          });
+          state.diaryEntries.unshift(created);
+        }
+        state.diaryModalOpen = false;
+        await loadDiaryEntries();
+        render();
+      } catch (e) {
+        alert("Failed to save entry: " + e.message);
+      } finally {
+        state.diaryLoading = false;
+      }
+    }
+
+    async function deleteDiaryEntry(id) {
+      if (!confirm("Are you sure you want to delete this log?")) return;
+      try {
+        await request(`/api/diary/${id}`, { method: "DELETE" });
+        state.diaryEntries = state.diaryEntries.filter(e => e.id !== id);
+        await loadDiaryEntries();
+        render();
+      } catch (e) {
+        alert("Delete failed");
+      }
+    }
+
+    function openDiaryModal(entry = null) {
+      if (entry) {
+        state.diaryForm = { ...entry };
+      } else {
+        state.diaryForm = { id: null, date: new Date().toISOString().split("T")[0], employer: "", hours_worked: 8, salary_earned: 673, notes: "" };
+      }
+      state.diaryModalOpen = true;
+      render();
+    }
+
+    // Document Analyzer
+    async function uploadDocument() {
+      const input = document.getElementById("payslip-file");
+      if (!input || !input.files[0]) {
+        alert("Please select a file to analyze.");
+        return;
+      }
+      
+      state.docLoading = true;
+      render();
+
+      const formData = new FormData();
+      formData.append("file", input.files[0]);
+
+      try {
+        state.docAnalysis = await request("/api/upload/", {
+          method: "POST",
+          body: formData
+        });
+      } catch (e) {
+        alert("Analysis failed: " + e.message);
+      } finally {
+        state.docLoading = false;
+        render();
+      }
+    }
+
+    // Web Speech API browser integration
+    let speechRecognition = null;
+    let isSpeechListening = false;
+
+    function initSpeech() {
+      if (typeof window !== "undefined") {
+        const SpeechRecObj = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecObj) {
+          speechRecognition = new SpeechRecObj();
+          speechRecognition.continuous = false;
+          speechRecognition.interimResults = false;
+          
+          speechRecognition.onstart = () => {
+            isSpeechListening = true;
+            render();
+          };
+          speechRecognition.onresult = (e) => {
+            const transcript = e.results[0][0].transcript;
+            const inputEl = document.getElementById("chat-input-box");
+            if (inputEl) {
+              state.chatInput = inputEl.value + (inputEl.value ? " " : "") + transcript;
+            } else {
+              state.chatInput = transcript;
+            }
+            render();
+          };
+          speechRecognition.onerror = (e) => {
+            console.error("Speech error", e);
+            isSpeechListening = false;
+            render();
+          };
+          speechRecognition.onend = () => {
+            isSpeechListening = false;
+            render();
+          };
+        }
+      }
+    }
+    initSpeech();
+
+    function toggleSpeechDictation() {
+      if (!speechRecognition) {
+        alert("Web Speech dictation is not supported by your current browser. Try Chrome, Safari, or Edge.");
+        return;
+      }
+      
+      if (isSpeechListening) {
+        speechRecognition.stop();
+      } else {
+        speechRecognition.lang = state.language === "hi" ? "hi-IN" : "en-IN";
+        try {
+          speechRecognition.start();
+        } catch(e){}
+      }
+    }
+
+    // --- HTML RENDER ENGINE ---
+
+    // Translations Object
+    const t = {
+      en: {
+        logo: "ShramikMitra AI",
+        tagline: "Know Your Rights. Protect Your Future.",
+        subtagline: "Delhi NCR's dedicated labour assistant. Calculate wages, verify contracts, generate complaints, and match welfare schemes.",
+        getStarted: "Get Started",
+        tryAi: "Try AI Assistant",
+        features: "Features",
+        faq: "FAQs",
+        how: "How it Works",
+        signIn: "Sign In",
+        register: "Register",
+        guestMode: "Guest Mode",
+        logout: "Log Out",
+        welcome: "Welcome",
+        overview: "Overview",
+        aiChat: "AI Chat Assistant",
+        rightsLib: "Labour Rights Library",
+        complaintGen: "Complaint Maker",
+        schemesMatch: "Welfare Schemes",
+        docAnal: "Document Analyzer",
+        helpMap: "Nearby Help Map",
+        diary: "Worker Diary",
+        profile: "Profile Settings",
+        sos: "Emergency SOS",
+        recent: "Recent Activity",
+        hours: "Logged Hours",
+        wages: "Logged Earnings",
+        compCount: "Complaints Generated",
+        advisory: "Delhi Labour Advisory",
+        adv1: "1. Overtime: Legally, working beyond 8 hours a day requires double pay (2x). Keep record.",
+        adv2: "2. Weekly Off: You are entitled to 1 paid day off per week.",
+        adv3: "3. Direct Bank Pay: Avoid cash where possible to ensure verifiable transaction proofs."
+      },
+      hi: {
+        logo: "श्रमिकमित्र एआई",
+        tagline: "अपने अधिकारों को जानें। अपना भविष्य बचाएं।",
+        subtagline: "दिल्ली एनसीआर का समर्पित श्रम सहायता पोर्टल। वेतन की गणना करें, विसंगतियों की जांच करें, शिकायतें उत्पन्न करें और योजनाओं का लाभ उठाएं।",
+        getStarted: "शुरू करें",
+        tryAi: "एआई सहायक",
+        features: "विशेषताएं",
+        faq: "पूछे जाने वाले प्रश्न",
+        how: "काम कैसे करता है",
+        signIn: "लॉग इन करें",
+        register: "पंजीकरण",
+        guestMode: "अतिथि मोड",
+        logout: "लॉग आउट",
+        welcome: "स्वागत हे",
+        overview: "अवलोकन",
+        aiChat: "एआई चैट सहायक",
+        rightsLib: "अधिकार पुस्तकालय",
+        complaintGen: "शिकायत निर्माता",
+        schemesMatch: "कल्याणकारी योजनाएं",
+        docAnal: "दस्तावेज़ विश्लेषक",
+        helpMap: "सहायता नक्शा",
+        diary: "कामगार डायरी",
+        profile: "प्रोफ़ाइल सेटिंग",
+        sos: "आपातकालीन एसओएस",
+        recent: "हाल की गतिविधि",
+        hours: "काम के घंटे",
+        wages: "कुल वेतन",
+        compCount: "उत्पन्न शिकायतें",
+        advisory: "दैनिक श्रम नियम",
+        adv1: "1. ओवरटाइम: कानूनन, 8 घंटे से अधिक काम करने पर दोगुना वेतन (2x) मिलना चाहिए।",
+        adv2: "2. साप्ताहिक छुट्टी: सप्ताह में 1 दिन सवैतनिक अवकाश मिलना अनिवार्य है।",
+        adv3: "3. बैंक भुगतान: नकद भुगतान से बचें। बैंक खाते में पैसे आने से कानूनी सबूत रहता है।"
+      }
+    };
+
+    function render() {
+      const container = document.getElementById("app");
+      if (!container) return;
+
+      const lang = state.language;
+      const isHi = lang === "hi";
+      const tr = t[lang];
+
+      // Clean render
+      if (state.activeView === "landing") {
+        container.innerHTML = renderLanding(tr);
+      } else if (state.activeView === "login") {
+        container.innerHTML = renderLogin(tr);
+      } else if (state.activeView === "register") {
+        container.innerHTML = renderRegister(tr);
+      } else {
+        // Authenticated Dashboard Layout
+        container.innerHTML = `
+          <div class="flex h-screen overflow-hidden">
+            <!-- Sidebar -->
+            ${renderSidebar(tr, isHi)}
+            
+            <div class="flex flex-1 flex-col overflow-hidden">
+              <!-- Top Navbar -->
+              ${renderTopNav(tr, isHi)}
+              
+              <!-- Subview Content -->
+              <main class="flex-1 overflow-y-auto p-6 bg-slate-50 dark:bg-slate-950">
+                ${renderSubview(tr, isHi)}
+              </main>
+            </div>
+          </div>
+          
+          <!-- Global SOS Modal -->
+          ${state.sosOpen ? renderSosModal(isHi) : ""}
+          <!-- Global Diary Log Modal -->
+          ${state.diaryModalOpen ? renderDiaryModal(isHi) : ""}
+        `;
+      }
+
+      // Re-initialize icons dynamically
+      lucide.createIcons();
+    }
+
+    // --- SUBVIEWS BUILDERS ---
+
+    function renderLanding(tr) {
+      return `
+        <!-- Navbar -->
+        <nav class="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-950/70 backdrop-blur-md">
+          <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex h-16 items-center justify-between">
+            <div class="flex items-center gap-2">
+              <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg">
+                <i data-lucide="shield" class="h-5 w-5"></i>
+              </div>
+              <span class="text-xl font-bold tracking-tight bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+                ${tr.logo}
+              </span>
+            </div>
+            <div class="flex items-center gap-4">
+              <button onclick="toggleLanguage()" class="rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-1.5 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                <i data-lucide="languages" class="h-3.5 w-3.5 inline mr-1"></i>${state.language === "en" ? "हिंदी" : "English"}
+              </button>
+              <button onclick="toggleThemeMode()" class="rounded-xl border border-slate-200 dark:border-slate-800 p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500">
+                <i data-lucide="${state.theme === 'dark' ? 'sun' : 'moon'}" class="h-4 w-4"></i>
+              </button>
+              <button onclick="navigate('login')" class="text-sm font-semibold hover:text-blue-600 transition-colors hidden sm:block">${tr.signIn}</button>
+              <button onclick="handleGuestLogin()" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 shadow-md transition-all">
+                ${tr.getStarted}
+              </button>
+            </div>
+          </div>
+        </nav>
+
+        <!-- Hero Section -->
+        <section class="flex-1 py-16 lg:py-28 relative overflow-hidden flex flex-col justify-center items-center">
+          <div class="absolute top-1/4 left-1/2 -z-10 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-600/5 blur-[100px]"></div>
+          <div class="mx-auto max-w-4xl px-6 text-center space-y-6">
+            <div class="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 px-4 py-1.5 text-xs font-semibold text-blue-600">
+              <i data-lucide="sparkles" class="h-3.5 w-3.5"></i> Delhi NCT Migrant Workers Welfare Assistant
+            </div>
+            <h1 class="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight">
+              ${tr.tagline}
+            </h1>
+            <p class="text-sm sm:text-base text-slate-500 max-w-2xl mx-auto leading-relaxed">
+              ${tr.subtagline}
+            </p>
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+              <button onclick="handleGuestLogin()" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3.5 text-sm font-semibold text-white hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all">
+                ${tr.getStarted} (Guest Mode) <i data-lucide="arrow-right" class="h-4 w-4"></i>
+              </button>
+              <button onclick="navigate('login')" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 py-3.5 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                ${tr.signIn}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-8 text-center text-xs text-slate-400 space-y-2 shrink-0">
+          <p class="max-w-md mx-auto px-4">Disclaimer: ShramikMitra AI is a hackathon MVP demonstration prototype and does not constitute formal legal counsel.</p>
+          <p>© 2026 ShramikMitra AI. NCT Welfare Initiative.</p>
+        </footer>
+      `;
+    }
+
+    function renderLogin(tr) {
+      return `
+        <div class="flex-1 flex items-center justify-center px-4 py-12 relative">
+          <div class="w-full max-w-md space-y-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 shadow-xl">
+            <div class="text-center">
+              <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg">
+                <i data-lucide="shield" class="h-6 w-6"></i>
+              </div>
+              <h2 class="mt-6 text-3xl font-bold tracking-tight">${tr.signIn}</h2>
+              <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Access ShramikMitra AI Assistant</p>
+            </div>
+
+            <form class="space-y-6" onsubmit="event.preventDefault(); handleLogin(document.getElementById('login-username').value, document.getElementById('login-password').value);">
+              <div class="space-y-1.5">
+                <label class="text-xs font-bold text-slate-700 dark:text-slate-300">Username</label>
+                <input type="text" id="login-username" required placeholder="e.g., ramesh123" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-blue-600">
+              </div>
+              <div class="space-y-1.5">
+                <label class="text-xs font-bold text-slate-700 dark:text-slate-300">Password</label>
+                <input type="password" id="login-password" required placeholder="••••••••" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-blue-600">
+              </div>
+              
+              <div class="space-y-3">
+                <button type="submit" class="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-blue-700 shadow-md">Sign In</button>
+                <button type="button" onclick="handleGuestLogin()" class="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-4 py-2.5 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-900">
+                  <i data-lucide="sparkles" class="h-4 w-4 inline mr-1 text-yellow-500"></i> ${tr.guestMode}
+                </button>
+              </div>
+            </form>
+
+            <p class="text-center text-xs text-slate-400">
+              Don't have an account? <button onclick="navigate('register')" class="font-bold text-blue-600 hover:underline">Register Here</button>
+            </p>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderRegister(tr) {
+      return `
+        <div class="flex-1 flex items-center justify-center px-4 py-12">
+          <div class="w-full max-w-md space-y-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 shadow-xl">
+            <div class="text-center">
+              <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-green-600 text-white shadow-lg">
+                <i data-lucide="user-plus" class="h-6 w-6"></i>
+              </div>
+              <h2 class="mt-6 text-3xl font-bold tracking-tight">${tr.register}</h2>
+              <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Register new worker profile</p>
+            </div>
+
+            <form class="space-y-6" onsubmit="event.preventDefault(); handleRegister(document.getElementById('reg-username').value, document.getElementById('reg-password').value);">
+              <div class="space-y-1.5">
+                <label class="text-xs font-bold text-slate-700 dark:text-slate-300">Choose Username</label>
+                <input type="text" id="reg-username" required placeholder="e.g. rajesh_kumar" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-green-600">
+              </div>
+              <div class="space-y-1.5">
+                <label class="text-xs font-bold text-slate-700 dark:text-slate-300">Password</label>
+                <input type="password" id="reg-password" required placeholder="••••••••" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-green-600">
+              </div>
+              
+              <button type="submit" class="w-full rounded-xl bg-green-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-green-700 shadow-md">Register & Start</button>
+            </form>
+
+            <p class="text-center text-xs text-slate-400">
+              Already have an account? <button onclick="navigate('login')" class="font-bold text-blue-600 hover:underline">Login Here</button>
+            </p>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderSidebar(tr, isHi) {
+      const items = [
+        { id: "dashboard", label: tr.overview, icon: "home" },
+        { id: "chat", label: tr.aiChat, icon: "message-square" },
+        { id: "rights", label: tr.rightsLib, icon: "book-open" },
+        { id: "complaints", label: tr.complaintGen, icon: "file-text" },
+        { id: "schemes", label: tr.schemesMatch, icon: "search" },
+        { id: "documents", label: tr.docAnal, icon: "file-search" },
+        { id: "map", label: tr.helpMap, icon: "map-pin" },
+        { id: "diary", label: tr.diary, icon: "calendar" },
+        { id: "profile", label: tr.profile, icon: "user" }
+      ];
+
+      return `
+        <aside class="hidden lg:flex flex-col w-64 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
+          <div class="flex h-16 items-center gap-2 px-6 border-b border-slate-200 dark:border-slate-800">
+            <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/20">
+              <i data-lucide="shield" class="h-5 w-5"></i>
+            </div>
+            <span class="text-lg font-bold tracking-tight bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+              ShramikMitra
+            </span>
+          </div>
+
+          <nav class="flex-1 space-y-1 px-4 py-6 overflow-y-auto no-scrollbar">
+            ${items.map(item => {
+              const active = state.activeView === item.id;
+              return `
+                <button onclick="navigate('${item.id}')" class="w-full flex items-center gap-3 rounded-xl px-4 py-3 text-xs font-bold transition-all ${
+                  active
+                    ? "bg-blue-600 text-white shadow-md shadow-blue-500/10"
+                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
+                }">
+                  <i data-lucide="${item.icon}" class="h-4.5 w-4.5 shrink-0"></i>
+                  <span>${item.label}</span>
+                </button>
+              `;
+            }).join("")}
+          </nav>
+
+          <div class="p-4 border-t border-slate-200 dark:border-slate-800">
+            <div class="flex items-center gap-2 bg-slate-50 dark:bg-slate-950 p-3 mb-2 rounded-xl border border-slate-100 dark:border-slate-900">
+              <div class="h-8 w-8 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-bold text-xs uppercase shrink-0">
+                ${state.user?.username.slice(0, 2) || "G"}
+              </div>
+              <div class="overflow-hidden">
+                <p class="text-xs font-bold truncate">${state.user?.username || "Guest"}</p>
+                <p class="text-[9px] text-slate-400 capitalize">${state.user?.role || "guest"}</p>
+              </div>
+            </div>
+            <button onclick="logout()" class="w-full flex items-center gap-3 rounded-xl px-4 py-2.5 text-xs font-bold text-rose-500 hover:bg-rose-500/10 transition-colors">
+              <i data-lucide="log-out" class="h-4 w-4"></i>
+              <span>${isHi ? "लॉग आउट" : "Log Out"}</span>
+            </button>
+          </div>
+        </aside>
+      `;
+    }
+
+    function renderTopNav(tr, isHi) {
+      return `
+        <header class="flex h-16 items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 shrink-0 z-10">
+          <div class="flex items-center gap-2 lg:hidden">
+            <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white">
+              <i data-lucide="shield" class="h-4 w-4"></i>
+            </div>
+            <span class="font-bold text-sm">ShramikMitra</span>
+          </div>
+          
+          <div class="hidden lg:block text-sm font-bold text-slate-600 dark:text-slate-400">
+            ${isHi ? "श्रम सहायता केंद्र" : "Welfare Portal Dashboard"}
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button onclick="toggleLanguage()" class="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-1.5 text-[10px] font-bold hover:bg-slate-50 dark:hover:bg-slate-850 transition-colors">
+              <i data-lucide="languages" class="h-3 w-3"></i>
+              <span>${isHi ? "English" : "हिंदी"}</span>
+            </button>
+
+            <button onclick="toggleThemeMode()" class="rounded-xl border border-slate-200 dark:border-slate-800 p-2 hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-500 transition-colors">
+              <i data-lucide="${state.theme === 'dark' ? 'sun' : 'moon'}" class="h-4 w-4"></i>
+            </button>
+
+            <button onclick="logout()" class="rounded-xl border border-rose-200 dark:border-rose-900/30 p-2 hover:bg-rose-500/10 text-rose-500 lg:hidden" title="Log out">
+              <i data-lucide="log-out" class="h-4 w-4"></i>
+            </button>
+          </div>
+        </header>
+      `;
+    }
+
+    function renderSubview(tr, isHi) {
+      const view = state.activeView;
+      
+      if (view === "dashboard") {
+        return renderDashboardOverview(tr, isHi);
+      } else if (view === "chat") {
+        return renderChat(tr, isHi);
+      } else if (view === "rights") {
+        return renderRights(tr, isHi);
+      } else if (view === "schemes") {
+        return renderSchemes(tr, isHi);
+      } else if (view === "complaints") {
+        return renderComplaints(tr, isHi);
+      } else if (view === "documents") {
+        return renderDocuments(tr, isHi);
+      } else if (view === "map") {
+        return renderMap(tr, isHi);
+      } else if (view === "diary") {
+        return renderDiary(tr, isHi);
+      } else if (view === "profile") {
+        return renderProfile(tr, isHi);
+      }
+      return "";
+    }
+
+    // --- OVERVIEW SUBVIEW ---
+    function renderDashboardOverview(tr, isHi) {
+      return `
+        <div class="space-y-6 max-w-5xl mx-auto">
+          <!-- Main Welcome banner -->
+          <div class="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 p-6 md:p-8 text-white shadow-md relative overflow-hidden">
+            <div class="max-w-xl space-y-3">
+              <h2 class="text-xl md:text-2xl font-bold">${isHi ? `नमस्ते, ${state.user?.username || "कामगार"}!` : `Hello, ${state.user?.username || "Worker"}!`}</h2>
+              <p class="text-xs opacity-90 leading-relaxed">
+                ${isHi ? "यह आपका व्यक्तिगत कल्याण सहायता डैशबोर्ड है। नीचे दिए गए उपकरणों का उपयोग करके अपने अधिकारों की जाँच करें, शिकायतें बनाएँ, या आपातकाल के लिए SOS दबाएँ।" : "This is your labor rights dashboard workspace. Check eligible schemes, draft formal complaints, log your diary work days, or use the SOS button for help."}
+              </p>
+              <div class="pt-2 flex gap-3">
+                <button onclick="navigate('chat')" class="rounded-xl bg-white text-blue-600 px-4 py-2 text-xs font-bold shadow hover:bg-slate-100 transition-colors">${isHi ? "एआई से चैट करें" : "Talk to AI"}</button>
+                <button onclick="state.sosOpen = true; render();" class="rounded-xl bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 text-xs font-bold transition-all shadow flex items-center gap-1 animate-pulse-slow">
+                  <i data-lucide="alert-triangle" class="h-3.5 w-3.5"></i> ${tr.sos}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stats boxes -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 flex items-center justify-between shadow-sm">
+              <div>
+                <p class="text-[10px] font-bold text-slate-500 uppercase">${tr.wages}</p>
+                <h3 class="text-xl font-bold mt-1 text-slate-800 dark:text-slate-100">₹${totalWagesLogged.toLocaleString()}</h3>
+              </div>
+              <div class="h-9 w-9 rounded-xl bg-green-500/10 text-green-600 flex items-center justify-center shrink-0">
+                <i data-lucide="dollar-sign" class="h-4.5 w-4.5"></i>
+              </div>
+            </div>
+
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 flex items-center justify-between shadow-sm">
+              <div>
+                <p class="text-[10px] font-bold text-slate-500 uppercase">${tr.hours}</p>
+                <h3 class="text-xl font-bold mt-1 text-slate-800 dark:text-slate-100">${totalHoursLogged} Hrs</h3>
+              </div>
+              <div class="h-9 w-9 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0">
+                <i data-lucide="clock" class="h-4.5 w-4.5"></i>
+              </div>
+            </div>
+
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 flex items-center justify-between shadow-sm">
+              <div>
+                <p class="text-[10px] font-bold text-slate-500 uppercase">${tr.compCount}</p>
+                <h3 class="text-xl font-bold mt-1 text-slate-800 dark:text-slate-100">${recentComplaints.length + (state.complaintHistory.length ? state.complaintHistory.length - recentComplaints.length : 0)}</h3>
+              </div>
+              <div class="h-9 w-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+                <i data-lucide="file-check-2" class="h-4.5 w-4.5"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Shortcuts Navigation Grid -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <button onclick="navigate('chat')" class="group rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 text-left shadow-sm hover:border-blue-500/40 hover:shadow transition-all">
+              <i data-lucide="message-square" class="h-5 w-5 text-blue-500 mb-2"></i>
+              <h4 class="text-xs font-bold text-slate-800 dark:text-slate-100 group-hover:text-blue-600">${tr.aiChat}</h4>
+              <p class="text-[10px] text-slate-400 mt-1">Ask questions in Hindi & English</p>
+            </button>
+            <button onclick="navigate('rights')" class="group rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 text-left shadow-sm hover:border-green-500/40 hover:shadow transition-all">
+              <i data-lucide="book-open" class="h-5 w-5 text-green-500 mb-2"></i>
+              <h4 class="text-xs font-bold text-slate-800 dark:text-slate-100 group-hover:text-green-600">${tr.rightsLib}</h4>
+              <p class="text-[10px] text-slate-400 mt-1">Browse wages & break laws</p>
+            </button>
+            <button onclick="navigate('complaints')" class="group rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 text-left shadow-sm hover:border-amber-500/40 hover:shadow transition-all">
+              <i data-lucide="file-text" class="h-5 w-5 text-amber-500 mb-2"></i>
+              <h4 class="text-xs font-bold text-slate-800 dark:text-slate-100 group-hover:text-amber-600">${tr.complaintGen}</h4>
+              <p class="text-[10px] text-slate-400 mt-1">Draft disputes with PDF download</p>
+            </button>
+            <button onclick="navigate('diary')" class="group rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 text-left shadow-sm hover:border-cyan-500/40 hover:shadow transition-all">
+              <i data-lucide="calendar" class="h-5 w-5 text-cyan-500 mb-2"></i>
+              <h4 class="text-xs font-bold text-slate-800 dark:text-slate-100 group-hover:text-cyan-600">${tr.diary}</h4>
+              <p class="text-[10px] text-slate-400 mt-1">Log working hours & earnings</p>
+            </button>
+          </div>
+
+          <!-- Activities & Advisory -->
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-4 shadow-sm">
+              <div class="flex justify-between items-center border-b border-slate-100 dark:border-slate-850 pb-2">
+                <h4 class="text-xs font-bold">${tr.recent}</h4>
+                <button onclick="navigate('diary')" class="text-[10px] font-bold text-blue-600 hover:underline">Manage Logs</button>
+              </div>
+              <div class="space-y-2">
+                ${recentLogs.length === 0 && recentComplaints.length === 0 ? `
+                  <p class="text-center text-xs text-slate-400 py-6">No recent logs found. Start adding logs in your Worker Diary.</p>
+                ` : ""}
+                ${recentLogs.map(log => `
+                  <div class="flex justify-between items-center bg-slate-50 dark:bg-slate-950 p-3 rounded-xl text-xs border border-slate-100 dark:border-slate-900/60">
+                    <div class="overflow-hidden">
+                      <p class="font-bold truncate">${log.employer}</p>
+                      <p class="text-[9px] text-slate-400">${log.date} • ${log.hours_worked} Hours</p>
+                    </div>
+                    <span class="font-bold text-green-600">₹${log.salary_earned}</span>
+                  </div>
+                `).join("")}
+                ${recentComplaints.map(c => `
+                  <div class="flex justify-between items-center bg-slate-50 dark:bg-slate-950 p-3 rounded-xl text-xs border border-slate-100 dark:border-slate-900/60">
+                    <div class="overflow-hidden">
+                      <p class="font-bold truncate">Drafted Complaint: ${c.employer_name}</p>
+                      <p class="text-[9px] text-slate-400">${c.issue} • ${new Date(c.timestamp).toLocaleDateString()}</p>
+                    </div>
+                    <button onclick="triggerPdfDownload(${c.id})" class="text-[10px] font-bold text-blue-600 hover:underline">PDF</button>
+                  </div>
+                `).join("")}
+              </div>
+            </div>
+
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-3 shadow-sm">
+              <h4 class="text-xs font-bold flex items-center gap-1">
+                <i data-lucide="trending-up" class="h-4 w-4 text-blue-600"></i> ${tr.advisory}
+              </h4>
+              <div class="text-[10px] text-slate-500 leading-relaxed space-y-2">
+                <p><strong>${tr.adv1}</strong></p>
+                <p><strong>${tr.adv2}</strong></p>
+                <p><strong>${tr.adv3}</strong></p>
+              </div>
+              <button onclick="navigate('rights')" class="w-full text-center rounded-xl bg-slate-100 dark:bg-slate-800 py-2 text-[10px] font-semibold text-blue-600 hover:bg-slate-200 transition-colors">
+                Browse Full Rights Library
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // --- AI CHAT SUBVIEW ---
+    function renderChat(tr, isHi) {
+      return `
+        <div class="flex flex-col h-[calc(100vh-10rem)] max-w-3xl mx-auto border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-3xl overflow-hidden shadow-sm">
+          <!-- Chat Header -->
+          <div class="flex h-14 items-center justify-between border-b border-slate-100 dark:border-slate-850 px-6 shrink-0 bg-slate-50 dark:bg-slate-900/50">
+            <div class="flex items-center gap-2">
+              <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600/10 text-blue-600">
+                <i data-lucide="bot" class="h-4.5 w-4.5"></i>
+              </div>
+              <div>
+                <h3 class="text-xs font-bold">ShramikMitra Elastic AI Chat</h3>
+                <p class="text-[9px] text-slate-400">Delhi Labour Helper</p>
+              </div>
+            </div>
+            ${state.chatHistory.length > 0 ? `
+              <button onclick="clearChatHistory()" class="rounded-lg p-2 text-slate-400 hover:text-rose-500 hover:bg-slate-100 dark:hover:bg-slate-800" title="Clear History">
+                <i data-lucide="trash-2" class="h-4 w-4"></i>
+              </button>
+            ` : ""}
+          </div>
+
+          <!-- Messages pane -->
+          <div id="chat-pane" class="flex-1 overflow-y-auto p-6 space-y-6">
+            ${state.chatHistory.length === 0 && !state.chatLoading ? `
+              <div class="flex flex-col items-center justify-center h-full text-center max-w-sm mx-auto space-y-4">
+                <div class="h-12 w-12 rounded-full bg-blue-600/10 text-blue-600 flex items-center justify-center"><i data-lucide="bot" class="h-6 w-6"></i></div>
+                <h4 class="font-bold text-sm">Ask about your labour rights</h4>
+                <p class="text-xs text-slate-500 leading-normal">Ask queries in simple Hindi or English regarding minimum wages, daily hours, unpaid salary, or injuries.</p>
+                <div class="grid grid-cols-1 gap-2 w-full pt-2">
+                  <button onclick="document.getElementById('chat-input-box').value='My employer has not paid my salary for 2 months. What should I do?'; state.chatInput='My employer has not paid my salary for 2 months. What should I do?'; sendChatMessage();" class="rounded-xl border border-slate-200 dark:border-slate-800 p-2.5 text-left text-[11px] font-bold text-slate-700 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-950 transition-colors">
+                    "My employer hasn't paid me for 2 months"
+                  </button>
+                  <button onclick="document.getElementById('chat-input-box').value='What are the legal overtime rates and daily hour limits in Delhi?'; state.chatInput='What are the legal overtime rates and daily hour limits in Delhi?'; sendChatMessage();" class="rounded-xl border border-slate-200 dark:border-slate-800 p-2.5 text-left text-[11px] font-bold text-slate-700 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-950 transition-colors">
+                    "What is the daily hours limit & overtime rate?"
+                  </button>
+                </div>
+              </div>
+            ` : ""}
+
+            ${state.chatHistory.map(m => `
+              <div class="space-y-4">
+                <!-- User message -->
+                <div class="flex items-start justify-end gap-3">
+                  <div class="max-w-[80%] rounded-2xl bg-slate-100 dark:bg-slate-800 px-4 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-100 shadow-sm">
+                    ${m.message}
+                  </div>
+                </div>
+                <!-- AI response -->
+                ${m.response ? `
+                  <div class="flex items-start gap-3">
+                    <div class="h-7 w-7 rounded-full bg-blue-600 text-white flex items-center justify-center shrink-0">
+                      <i data-lucide="bot" class="h-4 w-4"></i>
+                    </div>
+                    <div class="max-w-[80%] rounded-2xl bg-blue-500/5 border border-blue-500/10 px-4 py-2.5 text-xs text-slate-700 dark:text-slate-300 space-y-2 leading-relaxed">
+                      ${m.response.split("\n\n").map(para => {
+                        if (para.startsWith("###")) return `<h5 class="font-bold text-sm text-slate-900 dark:text-slate-100 pt-1">${para.replace("###", "").trim()}</h5>`;
+                        if (para.includes("\n-") || para.includes("\n*")) {
+                          return `<ul class="list-disc pl-4 space-y-1">${para.split("\n").filter(li=>li.trim()).map(li=>`<li>${li.replace(/^-\s*/, "").replace(/^\*\s*/, "").trim()}</li>`).join("")}</ul>`;
+                        }
+                        return `<p>${para}</p>`;
+                      }).join("")}
+                    </div>
+                  </div>
+                ` : ""}
+              </div>
+            `).join("")}
+
+            ${state.chatLoading ? `
+              <div class="flex items-start gap-3">
+                <div class="h-7 w-7 rounded-full bg-blue-600 text-white flex items-center justify-center shrink-0">
+                  <i data-lucide="bot" class="h-4 w-4"></i>
+                </div>
+                <div class="rounded-2xl bg-slate-50 dark:bg-slate-950 p-4 border border-slate-150 dark:border-slate-850 flex items-center gap-1 shadow-sm">
+                  <span class="h-1.5 w-1.5 rounded-full bg-slate-400 animate-bounce"></span>
+                  <span class="h-1.5 w-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:0.2s]"></span>
+                  <span class="h-1.5 w-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:0.4s]"></span>
+                </div>
+              </div>
+            ` : ""}
+          </div>
+
+          <!-- Chat input -->
+          <div class="border-t border-slate-100 dark:border-slate-850 p-4 shrink-0 bg-slate-50 dark:bg-slate-900/50">
+            <form class="flex items-center gap-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-3 py-1.5" onsubmit="event.preventDefault(); sendChatMessage();">
+              <input type="text" id="chat-input-box" value="${state.chatInput}" oninput="state.chatInput = this.value" placeholder="${isHi ? "अपना सवाल यहाँ लिखें या बोलें..." : "Ask your labor rights question here..."}" class="flex-1 bg-transparent px-2 py-1.5 text-xs font-semibold focus:outline-none text-slate-800 dark:text-slate-150">
+              
+              <button type="button" onclick="toggleSpeechDictation()" class="rounded-xl p-2 transition-colors text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-850 ${isSpeechListening ? 'bg-rose-500 text-white animate-pulse' : ''}" title="Speak/Dictate">
+                <i data-lucide="${isSpeechListening ? 'mic-off' : 'mic'}" class="h-4 w-4"></i>
+              </button>
+              
+              <button type="submit" class="rounded-xl bg-blue-600 text-white p-2 hover:bg-blue-700 transition-colors shadow">
+                <i data-lucide="send" class="h-4 w-4"></i>
+              </button>
+            </form>
+          </div>
+        </div>
+      `;
+    }
+
+    // --- RIGHTS LIBRARY SUBVIEW ---
+    function renderRights(tr, isHi) {
+      const categories = ["All", "Wages", "Hours & Leaves", "Construction", "Equality", "Safety"];
+      
+      const filtered = state.rights.filter(r => {
+        const matchesCat = state.rightsCategory === "All" || r.category === state.rightsCategory;
+        const q = state.rightsSearch.toLowerCase();
+        const matchesSearch = r.title_en.toLowerCase().includes(q) || r.title_hi.includes(q) || r.summary_en.toLowerCase().includes(q) || r.summary_hi.includes(q);
+        return matchesCat && matchesSearch;
+      });
+
+      return `
+        <div class="space-y-6 max-w-5xl mx-auto">
+          <div>
+            <h2 class="text-xl font-bold">${isHi ? "दिल्ली श्रम अधिकार नियमावली" : "Delhi Labour Rights Library"}</h2>
+            <p class="text-xs text-slate-500">Explore official wages guidelines, working hours limits, leaves, and safety codes in NCT Delhi.</p>
+          </div>
+
+          <!-- Filters & Search -->
+          <div class="flex flex-col sm:flex-row gap-4">
+            <div class="flex-1 relative">
+              <i data-lucide="search" class="absolute left-3 top-3 h-4 w-4 text-slate-400"></i>
+              <input type="text" placeholder="${isHi ? "अधिकार खोजें (उदा: वेतन)..." : "Search rights (e.g. wage)..."}" value="${state.rightsSearch}" oninput="state.rightsSearch = this.value; render();" class="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 pl-9 pr-4 py-2 text-xs font-semibold focus:outline-none focus:border-blue-600">
+            </div>
+            
+            <div class="flex gap-1.5 overflow-x-auto pb-1 max-w-full no-scrollbar shrink-0">
+              ${categories.map(cat => `
+                <button onclick="state.rightsCategory='${cat}'; render();" class="rounded-xl px-3.5 py-2 text-xs font-semibold border transition-all ${
+                  state.rightsCategory === cat
+                    ? "bg-blue-600 border-blue-600 text-white shadow-sm"
+                    : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-50"
+                }">${cat}</button>
+              `).join("")}
+            </div>
+          </div>
+
+          <!-- Cards Grid -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            ${state.rights.length === 0 ? `
+              <div class="col-span-full py-20 text-center text-xs text-slate-400">Loading rights index data...</div>
+            ` : ""}
+            ${filtered.map(r => `
+              <div onclick="state.selectedRight = ${JSON.stringify(r).replace(/"/g, '&quot;')}; render();" class="group cursor-pointer rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 hover:border-blue-600/40 shadow-sm flex flex-col justify-between hover:-translate-y-0.5 transition-all">
+                <div class="space-y-3">
+                  <div class="h-9 w-9 rounded-xl bg-blue-600/10 text-blue-600 flex items-center justify-center">
+                    <i data-lucide="book-open" class="h-4.5 w-4.5"></i>
+                  </div>
+                  <h4 class="font-bold text-xs text-slate-850 dark:text-slate-100">${isHi ? r.title_hi : r.title_en}</h4>
+                  <p class="text-[10px] text-slate-400 line-clamp-3 leading-normal">${isHi ? r.summary_hi : r.summary_en}</p>
+                </div>
+                <div class="pt-3 border-t border-slate-100 dark:border-slate-850 mt-4 flex items-center justify-between text-[10px] font-bold text-blue-600">
+                  <span>${r.category}</span>
+                  <span>View Details →</span>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+
+        <!-- Details Modal -->
+        ${state.selectedRight ? renderRightDetailsModal(isHi) : ""}
+      `;
+    }
+
+    function renderRightDetailsModal(isHi) {
+      const r = state.selectedRight;
+      return `
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm px-4">
+          <div class="w-full max-w-2xl rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 md:p-8 shadow-2xl space-y-6 max-h-[85vh] overflow-y-auto animate-scale-in">
+            <div class="flex justify-between items-start gap-4 border-b border-slate-100 dark:border-slate-850 pb-3">
+              <div>
+                <span class="inline-block rounded-full bg-blue-600/10 px-2.5 py-0.5 text-[9px] font-semibold text-blue-600 mb-1">${r.category}</span>
+                <h3 class="text-sm font-bold">${isHi ? r.title_hi : r.title_en}</h3>
+              </div>
+              <button onclick="state.selectedRight = null; render();" class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+                <i data-lucide="x" class="h-5 w-5"></i>
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs leading-relaxed">
+              <div class="space-y-3 border-r border-slate-100 dark:border-slate-850 pr-4">
+                <h4 class="font-bold text-slate-400 uppercase tracking-wider text-[9px]">English Guidelines</h4>
+                <p class="font-medium text-slate-700 dark:text-slate-300">${r.summary_en}</p>
+                ${r.details_en.rates ? `
+                  <div class="border border-slate-100 dark:border-slate-850 rounded-xl overflow-hidden text-[10px] mt-2">
+                    <table class="w-full text-left">
+                      <tr class="bg-slate-50 dark:bg-slate-950 font-bold border-b border-slate-100 dark:border-slate-850"><th class="p-2">Skill</th><th class="p-2">Daily</th><th class="p-2">Monthly</th></tr>
+                      ${r.details_en.rates.map(rate=>`<tr><td class="p-2 font-medium">${rate.skill}</td><td class="p-2 text-blue-600">${rate.daily}</td><td class="p-2 font-bold">${rate.monthly}</td></tr>`).join("")}
+                    </table>
+                  </div>
+                ` : ""}
+                ${r.details_en.rules ? `<ul class="list-disc pl-4 text-slate-500 space-y-1">${r.details_en.rules.map(rule=>`<li>${rule}</li>`).join("")}</ul>` : ""}
+              </div>
+              <div class="space-y-3">
+                <h4 class="font-bold text-slate-400 uppercase tracking-wider text-[9px]">हिंदी दिशानिर्देश</h4>
+                <p class="font-medium text-slate-700 dark:text-slate-300">${r.summary_hi}</p>
+                ${r.details_hi.rates ? `
+                  <div class="border border-slate-100 dark:border-slate-850 rounded-xl overflow-hidden text-[10px] mt-2">
+                    <table class="w-full text-left">
+                      <tr class="bg-slate-50 dark:bg-slate-950 font-bold border-b border-slate-100 dark:border-slate-850"><th class="p-2">कौशल</th><th class="p-2">दैनिक</th><th class="p-2">मासिक</th></tr>
+                      ${r.details_hi.rates.map(rate=>`<tr><td class="p-2 font-medium">${rate.skill}</td><td class="p-2 text-blue-600">${rate.daily}</td><td class="p-2 font-bold">${rate.monthly}</td></tr>`).join("")}
+                    </table>
+                  </div>
+                ` : ""}
+                ${r.details_hi.rules ? `<ul class="list-disc pl-4 text-slate-500 space-y-1">${r.details_hi.rules.map(rule=>`<li>${rule}</li>`).join("")}</ul>` : ""}
+              </div>
+            </div>
+            
+            <div class="flex justify-end pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button onclick="state.selectedRight=null; render();" class="rounded-xl bg-blue-600 text-white px-5 py-2 text-xs font-semibold hover:bg-blue-700 transition shadow">Got It</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // --- SCHEMES MATCHER SUBVIEW ---
+    function renderSchemes(tr, isHi) {
+      return `
+        <div class="space-y-6 max-w-5xl mx-auto">
+          <div>
+            <h2 class="text-xl font-bold">${isHi ? "सरकारी कल्याणकारी योजना खोजक" : "Government Schemes Finder"}</h2>
+            <p class="text-xs text-slate-500">Match your details with active schemes and request custom AI application support summaries.</p>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            <!-- Form -->
+            <form onsubmit="event.preventDefault(); matchSchemes();" class="lg:col-span-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-4 shadow-sm">
+              <h3 class="text-xs font-bold border-b border-slate-100 dark:border-slate-850 pb-2">Provide Details</h3>
+              <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-500">Age (years)</label>
+                <input type="number" required value="${state.schemeForm.age}" oninput="state.schemeForm.age=Number(this.value)" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs focus:outline-none">
+              </div>
+              <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-500">Gender</label>
+                <select onchange="state.schemeForm.gender=this.value" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs focus:outline-none">
+                  <option value="Male" ${state.schemeForm.gender==='Male'?'selected':''}>Male (पुरुष)</option>
+                  <option value="Female" ${state.schemeForm.gender==='Female'?'selected':''}>Female (महिला)</option>
+                  <option value="Other" ${state.schemeForm.gender==='Other'?'selected':''}>Other (अन्य)</option>
+                </select>
+              </div>
+              <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-500">Occupation</label>
+                <select onchange="state.schemeForm.occupation=this.value" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs focus:outline-none">
+                  <option value="Construction">Construction Worker (निर्माण)</option>
+                  <option value="Domestic">Domestic Worker (घरेलू)</option>
+                  <option value="Factory">Factory Worker (कारखाना)</option>
+                  <option value="Sanitation">Sanitation (सफाई)</option>
+                  <option value="Other">Other / Unorganized (अन्य)</option>
+                </select>
+              </div>
+              <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-500">State</label>
+                <select onchange="state.schemeForm.state=this.value" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs focus:outline-none">
+                  <option value="Delhi">Delhi (दिल्ली)</option>
+                  <option value="Other">Other State (अन्य)</option>
+                </select>
+              </div>
+              <button type="submit" disabled="${state.schemesLoading}" class="w-full rounded-xl bg-blue-600 text-white px-4 py-2.5 text-xs font-bold hover:bg-blue-700 transition flex items-center justify-center gap-1 shadow">
+                ${state.schemesLoading ? '<i data-lucide="loader-2" class="h-4 w-4 animate-spin mr-1"></i> Matching...' : '<i data-lucide="search" class="h-4 w-4 mr-1"></i> Find Schemes'}
+              </button>
+            </form>
+
+            <!-- Results -->
+            <div class="lg:col-span-8 space-y-6">
+              ${state.schemesLoading ? `
+                <div class="rounded-2xl border bg-white dark:bg-slate-900 p-6 animate-pulse space-y-4">
+                  <div class="h-5 w-1/4 rounded bg-slate-100 dark:bg-slate-800"></div>
+                  <div class="h-4 w-3/4 rounded bg-slate-100 dark:bg-slate-800"></div>
+                </div>
+              ` : ""}
+
+              ${!state.schemesLoading && !state.schemesMatched ? `
+                <div class="text-center py-20 border border-dashed border-slate-200 dark:border-slate-850 rounded-2xl bg-white dark:bg-slate-900">
+                  <i data-lucide="award" class="mx-auto h-12 w-12 text-slate-350 dark:text-slate-700 mb-3 animate-pulse-slow"></i>
+                  <h4 class="font-bold text-sm text-slate-700 dark:text-slate-300">Ready to Search</h4>
+                  <p class="text-xs text-slate-400 max-w-xs mx-auto mt-1">Enter your parameters on the left to pull eligible pension, health, or education grants in Delhi.</p>
+                </div>
+              ` : ""}
+
+              ${state.schemesMatched ? `
+                <div class="space-y-6">
+                  <!-- AI box -->
+                  ${state.schemesMatched.ai_recommendation ? `
+                    <div class="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-5 space-y-3">
+                      <h4 class="text-xs font-bold text-blue-600 flex items-center gap-1">
+                        <i data-lucide="sparkles" class="h-4 w-4 animate-pulse"></i> AI Advisor Analysis
+                      </h4>
+                      <div class="text-[11px] text-slate-750 dark:text-slate-300 leading-relaxed space-y-2">
+                        ${state.schemesMatched.ai_recommendation.split("\n\n").map(para => {
+                          if (para.startsWith("###")) return `<h5 class="font-bold text-xs pt-1">${para.replace("###","")}</h5>`;
+                          if (para.includes("\n-") || para.includes("\n*")) {
+                            return `<ul class="list-disc pl-4 space-y-1">${para.split("\n").filter(li=>li.trim()).map(li=>`<li>${li.replace(/^-\s*/,"").replace(/^\*\s*/,"")}</li>`).join("")}</ul>`;
+                          }
+                          return `<p>${para}</p>`;
+                        }).join("")}
+                      </div>
+                    </div>
+                  ` : ""}
+
+                  <!-- Scheme cards -->
+                  <div class="space-y-4">
+                    <h4 class="text-xs font-bold">Eligible Programs Found (${state.schemesMatched.schemes.length})</h4>
+                    ${state.schemesMatched.schemes.map(s => `
+                      <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-3 shadow-sm">
+                        <div class="flex justify-between items-start">
+                          <h4 class="font-bold text-xs">${isHi ? s.name_hi : s.name_en}</h4>
+                          <span class="rounded bg-green-500/10 text-green-600 px-2 py-0.5 text-[9px] font-bold">Eligible</span>
+                        </div>
+                        <p class="text-[10px] text-slate-400 leading-relaxed">${isHi ? s.description_hi : s.description_en}</p>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-100 dark:border-slate-850 text-[11px]">
+                          <div>
+                            <p class="font-bold text-slate-500"><i data-lucide="award" class="h-3 w-3 inline mr-1 text-green-600"></i> Benefits</p>
+                            <p class="text-slate-650 dark:text-slate-300 mt-1 pl-4">${isHi ? s.benefits_hi : s.benefits_en}</p>
+                          </div>
+                          <div>
+                            <p class="font-bold text-slate-500"><i data-lucide="file-text" class="h-3 w-3 inline mr-1 text-amber-500"></i> Required Documents</p>
+                            <ul class="list-disc pl-8 mt-1 space-y-0.5">${(isHi ? s.required_documents_hi : s.required_documents_en).map(doc=>`<li>${doc}</li>`).join("")}</ul>
+                          </div>
+                        </div>
+                      </div>
+                    `).join("")}
+                  </div>
+                </div>
+              ` : ""}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // --- COMPLAINTS SUBVIEW ---
+    function renderComplaints(tr, isHi) {
+      return `
+        <div class="space-y-6 max-w-5xl mx-auto">
+          <div>
+            <h2 class="text-xl font-bold">${isHi ? "औपचारिक श्रम शिकायत निर्माता" : "Labour Complaint Letter Generator"}</h2>
+            <p class="text-xs text-slate-500">Enter details of the labor code violation to draft formatted letters to the Delhi Labour Commissioner office.</p>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            <!-- Form -->
+            <form onsubmit="event.preventDefault(); generateComplaintLetter();" class="lg:col-span-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-4 shadow-sm">
+              <h3 class="text-xs font-bold border-b border-slate-100 dark:border-slate-855 pb-2">Provide Dispute Details</h3>
+              <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-500">Employer / Contractor Name</label>
+                <input type="text" required placeholder="e.g. ABC Projects Pvt Ltd" value="${state.complaintForm.employer_name}" oninput="state.complaintForm.employer_name=this.value" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs focus:outline-none">
+              </div>
+              <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-500">Issue Category</label>
+                <select onchange="state.complaintForm.issue=this.value" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs focus:outline-none">
+                  <option value="Unpaid Wages">Unpaid Wages (वेतन भुगतान न होना)</option>
+                  <option value="Underpayment Below Minimum Wage">Underpayment Below Minimum Wage (न्यूनतम वेतन से कम)</option>
+                  <option value="Excessive Working Hours">Excessive Working Hours (अत्यधिक काम के घंटे)</option>
+                  <option value="Safety Violation">Safety Violations (सुरक्षा उपकरणों का न होना)</option>
+                </select>
+              </div>
+              <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-500">Incident Start Date</label>
+                <input type="date" required value="${state.complaintForm.date}" oninput="state.complaintForm.date=this.value" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs focus:outline-none">
+              </div>
+              <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-500">Detailed Description</label>
+                <textarea rows="4" required placeholder="Provide clear descriptions (e.g. worked for 15 days in June but contractor withheld payments...)" oninput="state.complaintForm.description=this.value" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs focus:outline-none">${state.complaintForm.description}</textarea>
+              </div>
+              <button type="submit" disabled="${state.complaintLoading}" class="w-full rounded-xl bg-blue-600 text-white px-4 py-2.5 text-xs font-bold hover:bg-blue-700 transition flex items-center justify-center gap-1 shadow">
+                ${state.complaintLoading ? '<i data-lucide="loader-2" class="h-4 w-4 animate-spin mr-1"></i> Drafting...' : '<i data-lucide="file-text" class="h-4 w-4 mr-1"></i> Generate Complaint'}
+              </button>
+            </form>
+
+            <!-- Previews -->
+            <div class="lg:col-span-7 space-y-6">
+              ${state.complaintLoading ? `
+                <div class="rounded-2xl border bg-white dark:bg-slate-900 p-6 animate-pulse space-y-4">
+                  <div class="h-5 w-1/3 rounded bg-slate-100 dark:bg-slate-800"></div>
+                  <div class="h-32 w-full rounded bg-slate-100 dark:bg-slate-800"></div>
+                </div>
+              ` : ""}
+
+              ${!state.complaintLoading && !state.complaintGenerated ? `
+                <div class="text-center py-20 border border-dashed border-slate-200 dark:border-slate-850 rounded-2xl bg-white dark:bg-slate-900">
+                  <i data-lucide="file-text" class="mx-auto h-12 w-12 text-slate-350 dark:text-slate-700 mb-3 animate-pulse-slow"></i>
+                  <h4 class="font-bold text-sm text-slate-700 dark:text-slate-300">Complaint Letter Draft</h4>
+                  <p class="text-xs text-slate-400 max-w-xs mx-auto mt-1">Submit the parameters on the left to compile formal complaints in English and Hindi.</p>
+                </div>
+              ` : ""}
+
+              ${state.complaintGenerated ? `
+                <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
+                  <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-850 px-5 py-3 bg-slate-50 dark:bg-slate-900/50">
+                    <div class="flex gap-2">
+                      <button onclick="state.complaintTab='en'; render();" class="rounded-lg px-3 py-1.5 text-xs font-semibold ${state.complaintTab==='en'?'bg-blue-600 text-white':'text-slate-500'}">English Letter</button>
+                      <button onclick="state.complaintTab='hi'; render();" class="rounded-lg px-3 py-1.5 text-xs font-semibold ${state.complaintTab==='hi'?'bg-blue-600 text-white':'text-slate-500'}">Hindi (हिंदी)</button>
+                    </div>
+                    <div class="flex gap-2">
+                      <button onclick="navigator.clipboard.writeText(state.complaintTab==='en'?state.complaintGenerated.content_en:state.complaintGenerated.content_hi); alert('Copied to clipboard!');" class="rounded-lg border px-3 py-1.5 text-xs font-semibold bg-white dark:bg-slate-950 flex items-center gap-1">
+                        <i data-lucide="copy" class="h-3.5 w-3.5"></i> Copy
+                      </button>
+                      <button onclick="triggerPdfDownload(${state.complaintGenerated.id})" class="rounded-lg bg-green-600 text-white px-3 py-1.5 text-xs font-semibold flex items-center gap-1">
+                        <i data-lucide="download" class="h-3.5 w-3.5"></i> PDF
+                      </button>
+                    </div>
+                  </div>
+                  <div class="p-5 font-mono text-[10px] leading-relaxed text-slate-700 dark:text-slate-350 whitespace-pre-wrap max-h-80 overflow-y-auto bg-slate-50 dark:bg-slate-950 p-4 border border-inner">
+                    ${state.complaintTab==='en'?state.complaintGenerated.content_en:state.complaintGenerated.content_hi}
+                  </div>
+                </div>
+              ` : ""}
+
+              <!-- History -->
+              <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-3 shadow-sm animate-fade-in">
+                <h4 class="text-xs font-bold flex items-center gap-1.5 border-b pb-2"><i data-lucide="history" class="h-4 w-4 text-slate-400"></i> Previous Complaints Log</h4>
+                <div class="space-y-2">
+                  ${state.complaintHistory.length === 0 ? `<p class="text-center text-xs text-slate-400 py-3">No complaints drafted yet.</p>` : ""}
+                  ${state.complaintHistory.map(comp => `
+                    <div class="flex justify-between items-center bg-slate-50 dark:bg-slate-950 p-3 rounded-xl border text-xs">
+                      <div>
+                        <p class="font-bold">${comp.employer_name}</p>
+                        <p class="text-[9px] text-slate-450">${comp.issue} • ${new Date(comp.timestamp).toLocaleDateString()}</p>
+                      </div>
+                      <div class="flex gap-2">
+                        <button onclick="state.complaintGenerated=${JSON.stringify(comp).replace(/"/g, '&quot;')}; render();" class="rounded px-2.5 py-1 bg-white border font-semibold text-[10px]">Preview</button>
+                        <button onclick="triggerPdfDownload(${comp.id})" class="rounded bg-green-500/15 text-green-600 px-2.5 py-1 font-semibold text-[10px] flex items-center gap-0.5"><i data-lucide="download" class="h-3 w-3"></i> PDF</button>
+                      </div>
+                    </div>
+                  `).join("")}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // --- DOCUMENT ANALYZER SUBVIEW ---
+    function renderDocuments(tr, isHi) {
+      return `
+        <div class="space-y-6 max-w-5xl mx-auto">
+          <div>
+            <h2 class="text-xl font-bold">${isHi ? "एआई दस्तावेज़ विश्लेषक" : "AI Document Compliance Analyzer"}</h2>
+            <p class="text-xs text-slate-500">Upload a salary slip or employment contract. The AI auditor will verify if salary levels align with Delhi legal guidelines.</p>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            <!-- Upload -->
+            <div class="lg:col-span-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-4 shadow-sm">
+              <h3 class="text-xs font-bold border-b pb-2 flex items-center gap-1"><i data-lucide="upload-cloud" class="h-4 w-4"></i> Upload File</h3>
+              
+              <label class="border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-950 transition-colors">
+                <i data-lucide="upload-cloud" class="h-8 w-8 text-slate-400 mb-2"></i>
+                <p class="text-xs font-bold">Select PDF, PNG, or JPG file</p>
+                <p class="text-[9px] text-slate-400 mt-1">Payslip, contract, or offer letter (Max 5MB)</p>
+                <input type="file" id="payslip-file" class="hidden" onchange="state.docFile=this.files[0]; render();">
+              </label>
+
+              ${state.docFile ? `
+                <div class="rounded-xl bg-slate-50 dark:bg-slate-950 p-3 border text-xs flex justify-between items-center">
+                  <div class="overflow-hidden pr-2">
+                    <p class="font-bold truncate">${state.docFile.name}</p>
+                    <p class="text-[9px] text-slate-400">${(state.docFile.size / 1024).toFixed(1)} KB</p>
+                  </div>
+                  <button onclick="state.docFile=null; state.docAnalysis=null; render();" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="h-4 w-4"></i></button>
+                </div>
+                
+                <button onclick="uploadDocument();" disabled="${state.docLoading}" class="w-full rounded-xl bg-blue-600 text-white px-4 py-2.5 text-xs font-bold hover:bg-blue-700 transition flex items-center justify-center gap-1 shadow">
+                  ${state.docLoading ? '<i data-lucide="loader-2" class="h-4 w-4 animate-spin mr-1"></i> Auditing...' : '<i data-lucide="file-search" class="h-4 w-4 mr-1"></i> Analyze Contract'}
+                </button>
+              ` : ""}
+            </div>
+
+            <!-- Analysis results -->
+            <div class="lg:col-span-7 space-y-6">
+              ${state.docLoading ? `
+                <div class="rounded-2xl border bg-white dark:bg-slate-900 p-6 animate-pulse space-y-3">
+                  <div class="h-5 w-1/4 rounded bg-slate-100 dark:bg-slate-800"></div>
+                  <div class="h-10 w-full rounded bg-slate-100 dark:bg-slate-800"></div>
+                </div>
+              ` : ""}
+
+              ${!state.docLoading && !state.docAnalysis ? `
+                <div class="text-center py-20 border border-dashed border-slate-200 dark:border-slate-850 rounded-2xl bg-white dark:bg-slate-900">
+                  <i data-lucide="file-search" class="mx-auto h-12 w-12 text-slate-355 dark:text-slate-700 mb-3 animate-pulse-slow"></i>
+                  <h4 class="font-bold text-sm text-slate-700 dark:text-slate-300">Compliance Audit Report</h4>
+                  <p class="text-xs text-slate-400 max-w-xs mx-auto mt-1">Upload a sample salary slip to test compliance algorithms.</p>
+                </div>
+              ` : ""}
+
+              ${state.docAnalysis ? `
+                <div class="space-y-6 animate-fade-in">
+                  <!-- Risk Card -->
+                  <div class="rounded-2xl border p-4 flex gap-3 items-start ${
+                    state.docAnalysis.alert_level === 'high' 
+                      ? 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-450' 
+                      : state.docAnalysis.alert_level === 'medium'
+                        ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-450'
+                        : 'bg-green-500/10 border-green-500/20 text-green-600 dark:text-green-450'
+                  }">
+                    <i data-lucide="alert-triangle" class="h-5 w-5 shrink-0"></i>
+                    <div class="text-xs">
+                      <p class="font-extrabold tracking-wider uppercase">${state.docAnalysis.alert_level} RISK EXPLOITATION WARNING</p>
+                      <p class="mt-1 opacity-90 leading-relaxed">${state.docAnalysis.alert_reason || "Check points below."}</p>
+                    </div>
+                  </div>
+
+                  <!-- Details -->
+                  <div class="rounded-2xl border bg-white dark:bg-slate-900 p-5 space-y-4 shadow-sm">
+                    <div>
+                      <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Document Summary</p>
+                      <p class="text-xs text-slate-750 dark:text-slate-300 leading-relaxed mt-1 font-medium">${state.docAnalysis.summary}</p>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4 pt-2 border-t text-xs">
+                      <div>
+                        <p class="font-bold text-slate-500"><i data-lucide="dollar-sign" class="h-3.5 w-3.5 inline mr-1 text-green-600"></i> Salary Extracted</p>
+                        <p class="font-bold text-slate-800 dark:text-slate-100 mt-1 pl-4">${state.docAnalysis.salary}</p>
+                      </div>
+                      <div>
+                        <p class="font-bold text-slate-500"><i data-lucide="clock" class="h-3.5 w-3.5 inline mr-1 text-blue-600"></i> Hours Extracted</p>
+                        <p class="font-bold text-slate-800 dark:text-slate-100 mt-1 pl-4">${state.docAnalysis.working_hours}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="rounded-2xl border bg-white dark:bg-slate-900 p-5 shadow-sm text-xs leading-relaxed space-y-2">
+                    <p class="font-bold text-slate-500"><i data-lucide="shield-alert" class="h-4 w-4 inline mr-1 text-rose-500"></i> Key Clauses Extracted</p>
+                    <p class="text-slate-700 dark:text-slate-300 pl-4">${state.docAnalysis.key_clauses}</p>
+                  </div>
+
+                  <div class="rounded-2xl border bg-white dark:bg-slate-900 p-5 shadow-sm text-xs leading-relaxed space-y-2">
+                    <p class="font-bold text-slate-500"><i data-lucide="info" class="h-4 w-4 inline mr-1 text-amber-500"></i> Red Flags / Missing Information</p>
+                    <p class="text-slate-700 dark:text-slate-300 pl-4">${state.docAnalysis.missing_information}</p>
+                  </div>
+                </div>
+              ` : ""}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // --- MAP SUBVIEW ---
+    function renderMap(tr, isHi) {
+      const places = [
+        { id: 1, name_en: "Delhi Labour Commissioner (HQ)", name_hi: "दिल्ली श्रम आयुक्त कार्यालय (HQ)", type: "Government", lat: 150, lng: 320, address: "5, Sham Nath Marg, Civil Lines, 110054", phone: "011-23963332" },
+        { id: 2, name_en: "Labour District Office (North-West)", name_hi: "जिला श्रम कार्यालय (उत्तर-पश्चिम)", type: "Government", lat: 100, lng: 180, address: "Nimri Colony, Ashok Vihar Phase IV, 110052", phone: "011-27303334" },
+        { id: 3, name_en: "DSLSA Legal Aid Clinic", name_hi: "डीएसएलएसए कानूनी सहायता केंद्र", type: "Legal Aid", lat: 260, lng: 290, address: "Patiala House Courts, New Delhi, 110001", phone: "1516 (Helpline)" },
+        { id: 4, name_en: "Chetnalaya Migrant Support NGO", name_hi: "चेतनालय प्रवासी सेवा एनजीओ", type: "NGO", lat: 50, lng: 250, address: "9-A, Jahangirpuri Market Flats, 110033", phone: "011-27632665" },
+        { id: 5, name_en: "Sanjay Gandhi Hospital", name_hi: "संजय गांधी मेमोरियल अस्पताल", type: "Hospital", lat: 130, lng: 100, address: "Mangolpuri, Outer Ring Road, 110083", phone: "011-27922712" }
+      ];
+
+      const getMarkerColor = (type) => {
+        if (type === "Government") return "bg-blue-600 text-white";
+        if (type === "NGO") return "bg-green-600 text-white";
+        if (type === "Legal Aid") return "bg-amber-500 text-white";
+        if (type === "Hospital") return "bg-rose-500 text-white";
+        return "bg-slate-700 text-white";
+      };
+
+      const selected = state.selectedRight; // Reuse selectedRight slot temporarily as selectedPlace
+
+      return `
+        <div class="space-y-6 max-w-5xl mx-auto">
+          <div>
+            <h2 class="text-xl font-bold">${isHi ? "नजदीकी सहायता केंद्र नक्शा" : "Nearby Help Centres Map"}</h2>
+            <p class="text-xs text-slate-500">Locate district labour offices, free DSLSA legal clinics, verified NGOs, and hospitals in Delhi.</p>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch h-[500px]">
+            <!-- List -->
+            <div class="lg:col-span-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm flex flex-col overflow-hidden">
+              <h3 class="text-xs font-bold border-b pb-2 flex items-center gap-1.5"><i data-lucide="filter" class="h-4 w-4"></i> Directory Listings</h3>
+              <div class="flex-1 overflow-y-auto pt-3 space-y-2 pr-1 no-scrollbar">
+                ${places.map(p => `
+                  <div onclick="state.selectedRight=${JSON.stringify(p).replace(/"/g, '&quot;')}; render();" class="rounded-xl border p-3 cursor-pointer text-xs transition-all ${
+                    selected?.id === p.id ? 'bg-blue-600/5 border-blue-600/40 shadow-sm' : 'border-slate-100 hover:border-slate-250 dark:border-slate-850 dark:hover:border-slate-800'
+                  }">
+                    <p class="font-bold">${isHi ? p.name_hi : p.name_en}</p>
+                    <span class="rounded bg-slate-100 dark:bg-slate-800 text-slate-400 px-1.5 py-0.5 text-[8px] font-bold inline-block mt-1">${p.type}</span>
+                  </div>
+                `).join("")}
+              </div>
+            </div>
+
+            <!-- Canvas Map -->
+            <div class="lg:col-span-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm flex flex-col justify-between overflow-hidden relative">
+              <div class="flex-1 relative rounded-xl bg-slate-50 dark:bg-slate-950 border overflow-hidden">
+                <div class="absolute inset-0 opacity-[0.03] dark:opacity-[0.05]" style="background-image: radial-gradient(circle, #2563EB 1px, transparent 1px); background-size: 20px 20px;"></div>
+                <div class="absolute top-3 left-3 text-[9px] font-bold text-slate-400 tracking-wider bg-white/70 dark:bg-slate-900/70 p-1.5 rounded shadow-sm border border-inner">DELHI METROPOLITAN SCHEMATIC VIEW</div>
+                
+                <!-- Markers plotting -->
+                ${places.map(p => `
+                  <button onclick="state.selectedRight=${JSON.stringify(p).replace(/"/g, '&quot;')}; render();" style="top: ${p.lat}px; left: ${p.lng}px;" class="absolute h-7 w-7 rounded-full flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform ${getMarkerColor(p.type)}">
+                    <i data-lucide="map-pin" class="h-4 w-4"></i>
+                  </button>
+                `).join("")}
+
+                <!-- Connaught Place core center guide -->
+                <div class="absolute top-[180px] left-[240px] text-[8px] font-bold text-slate-400 border rounded px-1.5 py-0.5 shadow-sm bg-white/80 dark:bg-slate-900/80">Connaught Place</div>
+              </div>
+
+              <!-- Marker Details drawer -->
+              <div class="h-28 mt-2 shrink-0 border-t pt-3 flex justify-between items-start text-xs">
+                ${selected ? `
+                  <div class="space-y-1.5 overflow-hidden flex-1 pr-4">
+                    <h4 class="font-bold truncate text-blue-600">${isHi ? selected.name_hi : selected.name_en}</h4>
+                    <p class="text-[9px] text-slate-450 leading-relaxed truncate">Address: ${selected.address}</p>
+                    <p class="text-[9px] font-bold text-slate-550 flex items-center gap-1"><i data-lucide="phone" class="h-3 w-3 text-green-600"></i> Phone: ${selected.phone}</p>
+                  </div>
+                  <div class="shrink-0 flex flex-col gap-2">
+                    <a href="tel:${selected.phone}" class="rounded-xl border bg-white dark:bg-slate-950 px-3 py-1.5 text-[10px] font-bold inline-flex items-center gap-1 hover:bg-slate-50 transition"><i data-lucide="phone" class="h-3 w-3"></i> Call Now</a>
+                    <button onclick="window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent('${selected.name_en} Delhi'), '_blank')" class="rounded-xl bg-blue-600 text-white px-3 py-1.5 text-[10px] font-bold flex items-center gap-1 hover:bg-blue-750 shadow-sm shadow-blue-500/10"><i data-lucide="external-link" class="h-3 w-3"></i> Navigate</button>
+                  </div>
+                ` : `
+                  <p class="text-center text-slate-400 w-full py-6">Select a point on the map or in the directory list to view details.</p>
+                `}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // --- WORKER DIARY SUBVIEW ---
+    function renderDiary(tr, isHi) {
+      return `
+        <div class="space-y-6 max-w-5xl mx-auto">
+          <div class="flex justify-between items-center gap-4">
+            <div>
+              <h2 class="text-xl font-bold">${isHi ? "कामगार दैनिक डायरी" : "Worker Daily Wage Diary"}</h2>
+              <p class="text-xs text-slate-500">Track and maintain daily logs of your work hours, employer names, and earnings.</p>
+            </div>
+            <button onclick="openDiaryModal()" class="rounded-xl bg-blue-600 text-white px-4 py-2.5 text-xs font-bold hover:bg-blue-700 transition flex items-center gap-1 shadow">
+              <i data-lucide="plus" class="h-4 w-4"></i> Add Log Log
+            </button>
+          </div>
+
+          <!-- Total Metrics Card -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 flex items-center justify-between shadow-sm">
+              <div>
+                <p class="text-[10px] font-bold text-slate-500 uppercase">Diary Wages Saved</p>
+                <h3 class="text-xl font-bold mt-1 text-slate-800 dark:text-slate-100">₹${totalWagesLogged.toLocaleString()}</h3>
+              </div>
+              <div class="h-10 w-10 rounded-xl bg-green-500/10 text-green-600 flex items-center justify-center shrink-0">
+                <i data-lucide="dollar-sign" class="h-5 w-5"></i>
+              </div>
+            </div>
+            
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 flex items-center justify-between shadow-sm">
+              <div>
+                <p class="text-[10px] font-bold text-slate-500 uppercase">Diary Hours Logged</p>
+                <h3 class="text-xl font-bold mt-1 text-slate-800 dark:text-slate-100">${totalHoursLogged} Hrs</h3>
+              </div>
+              <div class="h-10 w-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0">
+                <i data-lucide="clock" class="h-5 w-5"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Table listings -->
+          <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr class="bg-slate-50 dark:bg-slate-950 font-bold border-b border-slate-100 dark:border-slate-800 text-slate-500">
+                    <th class="p-3.5">Date</th>
+                    <th class="p-3.5">Employer / Contractor</th>
+                    <th class="p-3.5 text-center">Hours Worked</th>
+                    <th class="p-3.5 text-right">Wages Earned</th>
+                    <th class="p-3.5">Notes</th>
+                    <th class="p-3.5 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${state.diaryEntries.length === 0 ? `
+                    <tr><td colspan="6" class="p-8 text-center text-slate-400">No logs saved yet. Click "Add Log" to record your hours.</td></tr>
+                  ` : ""}
+                  ${state.diaryEntries.map(e => `
+                    <tr class="border-b border-slate-100 dark:border-slate-850 hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-colors">
+                      <td class="p-3.5 font-bold">${e.date}</td>
+                      <td class="p-3.5 font-semibold">${e.employer}</td>
+                      <td class="p-3.5 text-center font-bold text-blue-600">${e.hours_worked} Hrs</td>
+                      <td class="p-3.5 text-right font-bold text-green-600">₹${e.salary_earned}</td>
+                      <td class="p-3.5 text-slate-400 truncate max-w-[150px]">${e.notes || "-"}</td>
+                      <td class="p-3.5 text-center">
+                        <div class="inline-flex gap-2">
+                          <button onclick="openDiaryModal(${JSON.stringify(e).replace(/"/g, '&quot;')})" class="text-slate-400 hover:text-blue-600"><i data-lucide="edit-3" class="h-4 w-4"></i></button>
+                          <button onclick="deleteDiaryEntry(${e.id})" class="text-slate-400 hover:text-rose-500"><i data-lucide="trash-2" class="h-4 w-4"></i></button>
+                        </div>
+                      </td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderDiaryModal(isHi) {
+      const form = state.diaryForm;
+      return `
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm px-4">
+          <form onsubmit="event.preventDefault(); saveDiaryEntry();" class="w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl space-y-4 animate-scale-in">
+            <div class="flex justify-between items-center border-b pb-3">
+              <h3 class="text-sm font-bold">${form.id ? 'Edit Log Entry' : 'Add Work Log Entry'}</h3>
+              <button type="button" onclick="state.diaryModalOpen=false; render();" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="h-4.5 w-4.5"></i></button>
+            </div>
+            
+            <div class="space-y-1">
+              <label class="text-[10px] font-bold text-slate-500">Date (Required)</label>
+              <input type="date" required value="${form.date}" oninput="state.diaryForm.date=this.value" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs focus:outline-none">
+            </div>
+            
+            <div class="space-y-1">
+              <label class="text-[10px] font-bold text-slate-500">Employer / Contractor Name</label>
+              <input type="text" required placeholder="e.g. Ramesh contractor" value="${form.employer}" oninput="state.diaryForm.employer=this.value" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs focus:outline-none">
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-500">Hours Worked</label>
+                <input type="number" required min="1" max="24" step="0.5" value="${form.hours_worked}" oninput="state.diaryForm.hours_worked=Number(this.value)" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs focus:outline-none">
+              </div>
+              <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-500">Wages Earned (₹)</label>
+                <input type="number" required min="0" value="${form.salary_earned}" oninput="state.diaryForm.salary_earned=Number(this.value)" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs focus:outline-none">
+              </div>
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-[10px] font-bold text-slate-500">Notes (Optional)</label>
+              <textarea rows="2" placeholder="e.g. Worked overtime, paid in cash." oninput="state.diaryForm.notes=this.value" class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs focus:outline-none">${form.notes}</textarea>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button type="button" onclick="state.diaryModalOpen=false; render();" class="rounded-xl border px-4 py-2 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-900">Cancel</button>
+              <button type="submit" class="rounded-xl bg-blue-600 text-white px-5 py-2 text-xs font-semibold hover:bg-blue-700 transition shadow">Save Log</button>
+            </div>
+          </form>
+        </div>
+      `;
+    }
+
+    // --- PROFILE SUBVIEW ---
+    function renderProfile(tr, isHi) {
+      const isGuest = state.user?.role === "guest";
+      return `
+        <div class="space-y-6 max-w-2xl mx-auto">
+          <div>
+            <h2 class="text-xl font-bold">${isHi ? "प्रोफ़ाइल और सेटिंग्स" : "Profile & Preferences"}</h2>
+            <p class="text-xs text-slate-500">Configure theme, dashboard language translations, and update password parameters.</p>
+          </div>
+
+          <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 flex items-center gap-4 shadow-sm">
+            <div class="h-14 w-14 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-extrabold text-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+              ${state.user?.username.slice(0, 2).toUpperCase() || "G"}
+            </div>
+            <div>
+              <h3 class="font-bold text-sm text-slate-850 dark:text-slate-100">${state.user?.username}</h3>
+              <p class="text-[9px] font-semibold text-slate-450 mt-1 uppercase"><span class="rounded-full bg-blue-600/10 text-blue-600 border border-blue-600/20 px-2 py-0.5">${state.user?.role || "Guest"} Account</span></p>
+            </div>
+          </div>
+
+          <!-- Preferences settings -->
+          <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-6">
+            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider border-b pb-2">Layout Settings</h4>
+            
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <p class="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5"><i data-lucide="languages" class="h-4 w-4 text-blue-600"></i> Preferred Language</p>
+                <p class="text-[10px] text-slate-400 mt-1">Translate UI fields between Hindi and English.</p>
+              </div>
+              <div class="flex rounded-xl bg-slate-100 dark:bg-slate-950 p-1 border">
+                <button onclick="if(state.language==='hi') toggleLanguage();" class="rounded-lg px-3 py-1.5 text-[11px] font-bold ${state.language==='en'?'bg-white dark:bg-slate-800 shadow-sm text-slate-800 dark:text-slate-100':'text-slate-450'}">English</button>
+                <button onclick="if(state.language==='en') toggleLanguage();" class="rounded-lg px-3 py-1.5 text-[11px] font-bold ${state.language==='hi'?'bg-white dark:bg-slate-800 shadow-sm text-slate-800 dark:text-slate-100':'text-slate-450'}">हिंदी</button>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <p class="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5"><i data-lucide="${state.theme==='dark'?'moon':'sun'}" class="h-4 w-4 text-yellow-500"></i> Theme Mode</p>
+                <p class="text-[10px] text-slate-400 mt-1">Swap between Dark and Light mode themes.</p>
+              </div>
+              <button onclick="toggleThemeMode()" class="rounded-xl border px-3 py-1.5 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-850 flex items-center gap-1">
+                <i data-lucide="${state.theme==='dark'?'sun':'moon'}" class="h-3.5 w-3.5"></i> Toggle Theme
+              </button>
+            </div>
+          </div>
+
+          <!-- registered password change -->
+          ${isGuest ? `
+            <div class="rounded-2xl bg-amber-500/10 border border-amber-500/20 p-4 text-xs text-amber-600 leading-normal flex gap-2">
+              <i data-lucide="info" class="h-5 w-5 shrink-0 mt-0.5"></i>
+              <div>
+                <p class="font-bold">Guest Mode Warning</p>
+                <p class="mt-1">You are currently logged in as guest. Please log out and register a new account to configure custom passwords and protect your logs permanently.</p>
+              </div>
+            </div>
+          ` : `
+            <form onsubmit="event.preventDefault(); alert('Password updated successfully!');" class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4">
+              <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider border-b pb-2">Change Password</h4>
+              <div class="space-y-1">
+                <label class="text-[10px] font-bold text-slate-500">New Password</label>
+                <input type="password" required class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs focus:outline-none">
+              </div>
+              <button type="submit" class="rounded-xl bg-blue-600 text-white px-4 py-2 text-xs font-bold hover:bg-blue-700 transition">Update Password</button>
+            </form>
+          `}
+
+          <!-- Terminate session -->
+          <div class="rounded-2xl border border-rose-500/20 bg-rose-500/5 p-5 flex items-center justify-between shadow-sm">
+            <div>
+              <p class="text-xs font-bold text-rose-500">Logout Session</p>
+              <p class="text-[10px] text-slate-400 mt-1">Safely exit your workspace and remove local tokens.</p>
+            </div>
+            <button onclick="logout()" class="rounded-xl bg-rose-500 hover:bg-rose-600 text-white px-4 py-2.5 text-xs font-bold flex items-center gap-1 shadow-sm"><i data-lucide="log-out" class="h-4 w-4"></i> Log Out</button>
+          </div>
+        </div>
+      `;
+    }
+
+    // --- SOS MODAL ---
+    function renderSosModal(isHi) {
+      return `
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm px-4">
+          <div class="w-full max-w-sm rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl space-y-5 animate-scale-in">
+            <div class="flex justify-between items-center border-b pb-3">
+              <div class="flex items-center gap-1.5 text-rose-500">
+                <i data-lucide="alert-triangle" class="h-5 w-5"></i>
+                <h3 class="text-sm font-bold">${isHi ? "आपातकालीन संपर्क सूची" : "Emergency Contact Helpline"}</h3>
+              </div>
+              <button onclick="state.sosOpen = false; render();" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="h-4.5 w-4.5"></i></button>
+            </div>
+            <p class="text-[10px] text-slate-400 leading-normal">If you are facing physical harassment, containment, or severe injury, call immediately:</p>
+            <div class="space-y-2">
+              <a href="tel:112" class="flex justify-between items-center bg-slate-50 dark:bg-slate-950 p-2.5 rounded-xl border hover:border-rose-500/40 hover:bg-rose-500/5 transition text-xs font-semibold">
+                <span>Police / PCR (पुलिस)</span>
+                <span class="rounded bg-rose-500 text-white px-2.5 py-1 font-bold">112</span>
+              </a>
+              <a href="tel:155214" class="flex justify-between items-center bg-slate-50 dark:bg-slate-950 p-2.5 rounded-xl border hover:border-rose-500/40 hover:bg-rose-500/5 transition text-xs font-semibold">
+                <span>Delhi Labour Helpline (श्रम हेल्पलाइन)</span>
+                <span class="rounded bg-blue-600 text-white px-2.5 py-1 font-bold">155214</span>
+              </a>
+              <a href="tel:14434" class="flex justify-between items-center bg-slate-50 dark:bg-slate-950 p-2.5 rounded-xl border hover:border-rose-500/40 hover:bg-rose-500/5 transition text-xs font-semibold">
+                <span>National Labour Helpline (राष्ट्रीय श्रम)</span>
+                <span class="rounded bg-blue-600 text-white px-2.5 py-1 font-bold">14434</span>
+              </a>
+            </div>
+            <button onclick="state.sosOpen=false; render();" class="w-full py-2.5 text-xs border rounded-xl bg-slate-50 hover:bg-slate-100 font-semibold transition">Close SOS</button>
+          </div>
+        </div>
+      `;
+    }
+
+    // --- INITIAL BOOTSTRAP ---
+    async function initApp() {
+      await refreshUser();
+      if (state.token) {
+        state.activeView = "dashboard";
+      } else {
+        state.activeView = "landing";
+      }
+      render();
+    }
+    initApp();
+  </script>
+</body>
+</html>

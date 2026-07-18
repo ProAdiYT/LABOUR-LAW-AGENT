@@ -1,0 +1,110 @@
+[
+  {
+    "id": "bocw-maternity-benefit",
+    "name_en": "BOCW Maternity Benefit Scheme",
+    "name_hi": "सक्रीया निर्माण श्रमिक मातृत्व लाभ योजना",
+    "description_en": "Financial assistance of ₹30,000 to registered female construction workers or wives of male construction workers upon childbirth.",
+    "description_hi": "पंजीकृत महिला निर्माण श्रमिकों या पुरुष निर्माण श्रमिकों की पत्नियों को प्रसव पर ₹30,000 की वित्तीय सहायता।",
+    "criteria": {
+      "min_age": 18,
+      "max_age": 60,
+      "genders": ["Female", "Male"],
+      "occupations": ["Construction"],
+      "states": ["Delhi"]
+    },
+    "benefits_en": "₹30,000 direct benefit transfer for medical and nutrition support after delivery.",
+    "benefits_hi": "प्रसव के बाद चिकित्सा और पोषण सहायता के लिए ₹30,000 सीधे बैंक खाते में ट्रांसफर।",
+    "required_documents_en": ["BOCW Registration Card", "Child Birth Certificate", "Bank Account Details"],
+    "required_documents_hi": ["BOCW पंजीकरण कार्ड", "बच्चे का जन्म प्रमाण पत्र", "बैंक खाते का विवरण"]
+  },
+  {
+    "id": "bocw-pension-scheme",
+    "name_en": "Delhi BOCW Old Age Pension",
+    "name_hi": "दिल्ली निर्माण श्रमिक वृद्धावस्था पेंशन",
+    "description_en": "Monthly pension of ₹3,000 for registered construction workers who have reached the age of 60.",
+    "description_hi": "पंजीकृत निर्माण श्रमिकों के लिए ₹3,000 की मासिक पेंशन, जिन्होंने 60 वर्ष की आयु प्राप्त कर ली है।",
+    "criteria": {
+      "min_age": 60,
+      "max_age": 120,
+      "genders": ["Male", "Female", "Other"],
+      "occupations": ["Construction"],
+      "states": ["Delhi"]
+    },
+    "benefits_en": "₹3,000 per month for life to support elderly retired construction workers.",
+    "benefits_hi": "बुजुर्ग सेवानिवृत्त निर्माण श्रमिकों की सहायता के लिए जीवन भर ₹3,000 प्रति माह।",
+    "required_documents_en": ["BOCW Card showing 3+ years registration", "Aadhaar Card", "Age Proof"],
+    "required_documents_hi": ["3+ वर्ष का BOCW कार्ड", "आधार कार्ड", "आयु प्रमाण पत्र"]
+  },
+  {
+    "id": "pm-sym-pension",
+    "name_en": "Pradhan Mantri Shram Yogi Maan-dhan (PM-SYM)",
+    "name_hi": "प्रधानमंत्री श्रम योगी मान-धन योजना (PM-SYM)",
+    "description_en": "Voluntary and contributory pension scheme for unorganized sector workers to ensure financial security in old age.",
+    "description_hi": "बुढ़ापे में वित्तीय सुरक्षा सुनिश्चित करने के लिए असंगठित क्षेत्र के श्रमिकों के लिए स्वैच्छिक और अंशदायी पेंशन योजना।",
+    "criteria": {
+      "min_age": 18,
+      "max_age": 40,
+      "genders": ["Male", "Female", "Other"],
+      "occupations": ["Construction", "Domestic", "Factory", "Sanitation", "Agriculture", "Other"],
+      "states": ["Delhi", "All"]
+    },
+    "benefits_en": "Assured monthly pension of ₹3,000 after attaining the age of 60 years.",
+    "benefits_hi": "60 वर्ष की आयु प्राप्त करने के बाद ₹3,000 की सुनिश्चित मासिक पेंशन।",
+    "required_documents_en": ["Aadhaar Card", "Savings Bank Account / Jan Dhan Account with IFSC"],
+    "required_documents_hi": ["आधार कार्ड", "आईएफएससी के साथ बचत बैंक खाता / जनधन खाता"]
+  },
+  {
+    "id": "delhi-education-assistance",
+    "name_en": "BOCW Children Education Assistance",
+    "name_hi": "निर्माण श्रमिकों के बच्चों के लिए शिक्षा सहायता",
+    "description_en": "Annual scholarship of ₹500 to ₹10,000 per year for children of registered construction workers from Class 1 to Degree courses.",
+    "description_hi": "कक्षा 1 से डिग्री पाठ्यक्रमों तक पंजीकृत निर्माण श्रमिकों के बच्चों के लिए ₹500 से ₹10,000 प्रति वर्ष की वार्षिक छात्रवृत्ति।",
+    "criteria": {
+      "min_age": 18,
+      "max_age": 60,
+      "genders": ["Male", "Female", "Other"],
+      "occupations": ["Construction"],
+      "states": ["Delhi"]
+    },
+    "benefits_en": "Financial aid ranging from ₹6,000/year (for school) up to ₹1,20,000/year (for professional courses like B.Tech/MBBS).",
+    "benefits_hi": "₹6,000/वर्ष (स्कूल के लिए) से लेकर ₹1,20,000/वर्ष (B.Tech/MBBS जैसे व्यावसायिक पाठ्यक्रमों के लिए) तक की वित्तीय सहायता।",
+    "required_documents_en": ["BOCW Registration Card", "School Identity Card", "Passing Marksheet of previous class"],
+    "required_documents_hi": ["BOCW पंजीकरण कार्ड", "स्कूल पहचान पत्र", "पिछली कक्षा की पासिंग मार्कशीट"]
+  },
+  {
+    "id": "onorc-ration-card",
+    "name_en": "One Nation One Ration Card (ONORC)",
+    "name_hi": "वन नेशन वन राशन कार्ड (ONORC)",
+    "description_en": "Allows migrant workers to claim food security benefits (subsidized foodgrains) from any Fair Price Shop (FPS) anywhere in India.",
+    "description_hi": "प्रवासी श्रमिकों को भारत में कहीं भी किसी भी राशन की दुकान (FPS) से खाद्य सुरक्षा लाभ (सब्सिडी वाले खाद्यान्न) प्राप्त करने की अनुमति देता है।",
+    "criteria": {
+      "min_age": 18,
+      "max_age": 120,
+      "genders": ["Male", "Female", "Other"],
+      "occupations": ["Construction", "Domestic", "Factory", "Sanitation", "Agriculture", "Other"],
+      "states": ["Delhi", "All"]
+    },
+    "benefits_en": "Access to subsidized wheat (₹2/kg), rice (₹3/kg), and coarse grains at Delhi ration shops using native state ration card.",
+    "benefits_hi": "मूल राज्य के राशन कार्ड का उपयोग करके दिल्ली की राशन दुकानों पर रियायती गेहूं (₹2/किग्रा) और चावल (₹3/किग्रा) तक पहुंच।",
+    "required_documents_en": ["Aadhaar linked Ration Card", "Aadhaar Card of all family members"],
+    "required_documents_hi": ["आधार से लिंक राशन कार्ड", "परिवार के सभी सदस्यों का आधार कार्ड"]
+  },
+  {
+    "id": "ayushman-bharat-pmjay",
+    "name_en": "Ayushman Bharat - PM-JAY",
+    "name_hi": "आयुष्मान भारत - पीएम-जेएवाई (PM-JAY)",
+    "description_en": "Health insurance scheme providing cashless coverage of up to ₹5 Lakhs per family per year for secondary and tertiary care hospitalization.",
+    "description_hi": "माध्यमिक और तृतीयक अस्पताल में भर्ती के लिए प्रति परिवार प्रति वर्ष ₹5 लाख तक का कैशलेस स्वास्थ्य बीमा लाभ।",
+    "criteria": {
+      "min_age": 18,
+      "max_age": 120,
+      "genders": ["Male", "Female", "Other"],
+      "occupations": ["Construction", "Domestic", "Factory", "Sanitation", "Agriculture", "Other"],
+      "states": ["Delhi", "All"]
+    },
+    "benefits_en": "Cashless treatment of ₹5,00,000 per family per year at all empaneled public and private hospitals.",
+    "benefits_hi": "सभी पैनल में शामिल सरकारी और निजी अस्पतालों में प्रति परिवार प्रति वर्ष ₹5,00,000 का कैशलेस इलाज।",
+    "required_documents_en": ["Aadhaar Card", "PM-JAY Letter / E-Card", "Ration Card"],
+    "required_documents_hi": ["आधार कार्ड", "पीएम-जेएवाई पत्र / ई-कार्ड", "राशन कार्ड"]
+  }
+]

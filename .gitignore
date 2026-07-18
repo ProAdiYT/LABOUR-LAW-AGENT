@@ -1,0 +1,38 @@
+# Next.js build and cache
+node_modules/
+.next/
+out/
+build/
+.env
+.env.local
+.env.development.local
+.env.individual.local
+.env.production.local
+
+# Python virtual environment and cache
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# Databases
+*.db
+*.sqlite3
+
+# Operating System files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# IDE settings
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp

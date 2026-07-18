@@ -1,0 +1,173 @@
+[
+  {
+    "id": "minimum-wage",
+    "title_en": "Minimum Wages in Delhi",
+    "title_hi": "दिल्ली में न्यूनतम मजदूरी",
+    "category": "Wages",
+    "icon": "DollarSign",
+    "summary_en": "Delhi has the highest minimum wage rates in India, updated semi-annually. Employers must pay according to skill level.",
+    "summary_hi": "दिल्ली में भारत में सबसे अधिक न्यूनतम मजदूरी दरें हैं, जिन्हें छमाही में अपडेट किया जाता है। नियोक्ताओं को कौशल स्तर के अनुसार भुगतान करना होगा।",
+    "details_en": {
+      "rates": [
+        {"skill": "Unskilled (अकुशल)", "daily": "₹673", "monthly": "₹17,494"},
+        {"skill": "Semi-Skilled (अर्ध-कुशल)", "daily": "₹740", "monthly": "₹19,256"},
+        {"skill": "Skilled (कुशल)", "daily": "₹813", "monthly": "₹21,184"}
+      ],
+      "rules": [
+        "Wages must be paid by the 7th or 10th of every month.",
+        "Cash payments are discouraged; bank transfer is preferred.",
+        "A salary slip showing deductions and net pay must be provided."
+      ]
+    },
+    "details_hi": {
+      "rates": [
+        {"skill": "अकुशल (Unskilled)", "daily": "₹673", "monthly": "₹17,494"},
+        {"skill": "अर्ध-कुशल (Semi-Skilled)", "daily": "₹740", "monthly": "₹19,256"},
+        {"skill": "कुशल (Skilled)", "daily": "₹813", "monthly": "₹21,184"}
+      ],
+      "rules": [
+        "मजदूरी का भुगतान हर महीने की 7 या 10 तारीख तक किया जाना चाहिए।",
+        "नकद भुगतान को हतोत्साहित किया जाता है; बैंक ट्रांसफर को प्राथमिकता दी जाती है।",
+        "कटौती और शुद्ध वेतन दिखाने वाली वेतन पर्ची प्रदान की जानी चाहिए।"
+      ]
+    }
+  },
+  {
+    "id": "working-hours",
+    "title_en": "Working Hours & Breaks",
+    "title_hi": "काम के घंटे और ब्रेक",
+    "category": "Hours & Leaves",
+    "icon": "Clock",
+    "summary_en": "Standard working hours are 8 hours a day, 48 hours a week, with mandatory rest intervals.",
+    "summary_hi": "मानक कार्य समय दिन में 8 घंटे, सप्ताह में 48 घंटे है, जिसमें अनिवार्य विश्राम अंतराल शामिल है।",
+    "details_en": {
+      "rules": [
+        "Maximum 9 hours of work in a single day, including overtime, but total normal hours cannot exceed 8.",
+        "At least 30 minutes of rest break after every 5 hours of continuous work.",
+        "One weekly holiday (usually Sunday) is a mandatory paid rest day."
+      ]
+    },
+    "details_hi": {
+      "rules": [
+        "एक दिन में अधिकतम 9 घंटे काम (अतिरिक्त समय सहित), लेकिन सामान्य घंटे 8 से अधिक नहीं हो सकते।",
+        "हर 5 घंटे के निरंतर काम के बाद कम से कम 30 मिनट का विश्राम ब्रेक।",
+        "सप्ताह में एक छुट्टी (आमतौर पर रविवार) एक अनिवार्य सवैतनिक विश्राम दिन है।"
+      ]
+    }
+  },
+  {
+    "id": "overtime",
+    "title_en": "Overtime Compensation",
+    "title_hi": "ओवरटाइम का मुआवजा",
+    "category": "Wages",
+    "icon": "TrendingUp",
+    "summary_en": "Any work done beyond 8 hours a day or 48 hours a week is overtime and must be paid at double the normal rate.",
+    "summary_hi": "दिन में 8 घंटे या सप्ताह में 48 घंटे से अधिक किया गया कोई भी काम ओवरटाइम है और इसका भुगतान सामान्य दर से दोगुना होना चाहिए।",
+    "details_en": {
+      "rules": [
+        "Overtime rate = 2x Normal Hourly Wage.",
+        "Employers must maintain an Overtime Register (Form IV under Minimum Wages Rules).",
+        "Compelling a worker to do excessive overtime without consent is illegal."
+      ]
+    },
+    "details_hi": {
+      "rules": [
+        "ओवरटाइम दर = सामान्य प्रति घंटा मजदूरी का 2 गुना।",
+        "नियोक्ताओं को एक ओवरटाइम रजिस्टर (न्यूनतम मजदूरी नियमों के तहत फॉर्म IV) बनाए रखना चाहिए।",
+        "सहमति के बिना किसी कर्मचारी को अत्यधिक ओवरटाइम करने के लिए मजबूर करना अवैध है।"
+      ]
+    }
+  },
+  {
+    "id": "construction-workers",
+    "title_en": "Construction Worker Special Rights",
+    "title_hi": "निर्माण श्रमिकों के विशेष अधिकार",
+    "category": "Construction",
+    "icon": "Hammer",
+    "summary_en": "Construction workers are protected under the BOCW Act and are entitled to health, pension, and education benefits.",
+    "summary_hi": "निर्माण श्रमिक BOCW अधिनियम के तहत संरक्षित हैं और स्वास्थ्य, पेंशन और शिक्षा लाभों के हकदार हैं।",
+    "details_en": {
+      "rules": [
+        "Workers aged 18-60 who worked for 90+ days in construction in the last year can register with the Delhi BOCW Board.",
+        "Registration grants access to financial assistance for marriages, tool purchase, maternity, and school admission for children.",
+        "Employers must pay 1% cess on construction cost to the welfare board for funding these schemes."
+      ]
+    },
+    "details_hi": {
+      "rules": [
+        "18-60 वर्ष के श्रमिक जिन्होंने पिछले वर्ष में निर्माण कार्य में 90+ दिन काम किया है, वे दिल्ली BOCW बोर्ड में पंजीकरण कर सकते हैं।",
+        "पंजीकरण से विवाह, औजारों की खरीद, मातृत्व, और बच्चों के स्कूल प्रवेश के लिए वित्तीय सहायता मिलती है।",
+        "नियोक्ताओं को इन योजनाओं के वित्तपोषण के लिए कल्याण बोर्ड को निर्माण लागत पर 1% उपकर (Cess) देना होगा।"
+      ]
+    }
+  },
+  {
+    "id": "women-workers",
+    "title_en": "Rights of Women Workers",
+    "title_hi": "महिला श्रमिकों के अधिकार",
+    "category": "Equality",
+    "icon": "UserCheck",
+    "summary_en": "Women workers are entitled to equal wages, maternity benefits, and secure work conditions, especially during night shifts.",
+    "summary_hi": "महिला श्रमिक समान मजदूरी, मातृत्व लाभ और सुरक्षित काम की परिस्थितियों की हकदार हैं, विशेष रूप से रात की पाली के दौरान।",
+    "details_en": {
+      "rules": [
+        "Equal Remuneration Act guarantees equal pay for equal work regardless of gender.",
+        "No woman worker can be employed between 7:00 PM and 6:00 AM without express consent and transport/security arrangements by the employer.",
+        "Maternity Benefit Act provides 26 weeks of paid leave for pregnant employees."
+      ]
+    },
+    "details_hi": {
+      "rules": [
+        "समान पारिश्रमिक अधिनियम लिंग की परवाह किए बिना समान काम के लिए समान वेतन की गारंटी देता है।",
+        "नियोक्ता द्वारा स्पष्ट सहमति और परिवहन/सुरक्षा व्यवस्था के बिना शाम 7:00 बजे से सुबह 6:00 बजे के बीच किसी भी महिला कर्मचारी को काम पर नहीं लगाया जा सकता।",
+        "मातृत्व लाभ अधिनियम गर्भवती कर्मचारियों के लिए 26 सप्ताह की सवैतनिक छुट्टी प्रदान करता है।"
+      ]
+    }
+  },
+  {
+    "id": "safety-health",
+    "title_en": "Workplace Safety & Health",
+    "title_hi": "कार्यस्थल सुरक्षा और स्वास्थ्य",
+    "category": "Safety",
+    "icon": "ShieldAlert",
+    "summary_en": "Employers must provide safety equipment, clean drinking water, clean toilets, and first aid facilities on site.",
+    "summary_hi": "नियोक्ताओं को साइट पर सुरक्षा उपकरण, स्वच्छ पेयजल, साफ शौचालय और प्राथमिक चिकित्सा सुविधाएं प्रदान करनी होंगी।",
+    "details_en": {
+      "rules": [
+        "Free supply of protective gear (helmets, gloves, boots, harnesses) on construction sites.",
+        "Availability of first-aid boxes managed by trained personnel.",
+        "Employers are liable to pay compensation under the Employee's Compensation Act in case of work accidents."
+      ]
+    },
+    "details_hi": {
+      "rules": [
+        "निर्माण स्थलों पर सुरक्षा उपकरणों (हेलमेट, दस्ताने, जूते, बेल्ट) की मुफ्त आपूर्ति।",
+        "प्रशिक्षित कर्मियों द्वारा प्रबंधित प्राथमिक चिकित्सा बक्से की उपलब्धता।",
+        "काम के दौरान होने वाली दुर्घटनाओं के मामले में कर्मचारी मुआवजा अधिनियम के तहत नियोक्ता मुआवजा देने के लिए उत्तरदायी हैं।"
+      ]
+    }
+  },
+  {
+    "id": "leave-rules",
+    "title_en": "Leave and Holiday Entitlements",
+    "title_hi": "छुट्टी और अवकाश के अधिकार",
+    "category": "Hours & Leaves",
+    "icon": "Calendar",
+    "summary_en": "Workers are entitled to various paid leaves including national holidays, casual leaves, and sick leaves.",
+    "summary_hi": "श्रमिक राष्ट्रीय अवकाश, आकस्मिक अवकाश (CL) और बीमारी अवकाश (SL) सहित विभिन्न सवैतनिक छुट्टियों के हकदार हैं।",
+    "details_en": {
+      "rules": [
+        "3 National Holidays (26 Jan, 15 Aug, 2 Oct) must be paid holidays.",
+        "Under Delhi Shops and Establishments Act: 15 days Privilege Leave, 12 days Casual/Sick Leave per year.",
+        "Unused privilege leaves can be carried forward or encashed."
+      ]
+    },
+    "details_hi": {
+      "rules": [
+        "3 राष्ट्रीय अवकाश (26 जनवरी, 15 अगस्त, 2 अक्टूबर) सवैतनिक अवकाश होने चाहिए।",
+        "दिल्ली दुकान और स्थापना अधिनियम के तहत: प्रति वर्ष 15 दिन विशेषाधिकार अवकाश (Privilege Leave) और 12 दिन आकस्मिक/बीमारी अवकाश।",
+        "अप्रयुक्त विशेषाधिकार छुट्टियों को अगले वर्ष के लिए आगे बढ़ाया जा सकता है या भुनाया (encash) जा सकता है।"
+      ]
+    }
+  }
+]
